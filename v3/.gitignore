@@ -1,0 +1,16 @@
+# v3 generated artifacts
+*.pt
+*.pth
+*.ckpt
+*.npz
+*.npy
+
+# keep README placeholders, ignore generated data/results by default
+v3/data/raw/*
+!v3/data/raw/README.md
+v3/data/processed/*
+!v3/data/processed/README.md
+v3/checkpoints/*
+!v3/checkpoints/README.md
+v3/results/*
+!v3/results/README.md
