@@ -1,0 +1,162 @@
+# AMP-JEPA-Hybrid V4A APEX-only configuration
+
+project:
+  name: AMP-JEPA-Hybrid V4A
+  mode: apex_only_full_population_optimization
+  uses_dbaasp: false
+  description: >
+    V4A uses the trained V3 latent AMP generator as a backbone and adds
+    population-wide APEX-guided optimization, failure-aware G-Rescue,
+    robustness testing, and Pareto final-panel selection.
+
+paths:
+  apex_root: /home/julojays/apex
+  v3_checkpoint: v3/checkpoints/amp_jepa_hybrid_v3_qc_core.pt
+  v3_corpus: v3/data/processed/peptide_corpus_v3_qc_core.csv
+  v3_ranked_candidates: v3/results/ranked_candidates_v3_qc_core.csv
+  v3_global_panel: v3/results/global_qc_core_apex_panel/global_qc_core_apex_passed_ranked.csv
+  results_root: v4/results
+
+seed_generation:
+  n_raw_samples: 100000
+  temperatures: [0.7, 0.9, 1.0, 1.2]
+  max_len: 64
+  min_len: 8
+  canonical_amino_acids_only: true
+  deduplicate_sequences: true
+
+candidate_filters:
+  min_length: 10
+  max_length: 40
+  preferred_min_length: 12
+  preferred_max_length: 32
+  min_charge: 2
+  max_charge: 10
+  preferred_min_charge: 3
+  preferred_max_charge: 8
+  min_hydrophobic_fraction: 0.25
+  max_hydrophobic_fraction: 0.65
+  preferred_min_hydrophobic_fraction: 0.30
+  preferred_max_hydrophobic_fraction: 0.55
+  max_cysteines: 2
+  max_tryptophans: 3
+  max_aromatic_fraction: 0.30
+
+apex_thresholds:
+  strong_median_mic: 40
+  acceptable_median_mic: 80
+  strong_mean_mic: 70
+  acceptable_mean_mic: 120
+  strong_worst_mic: 300
+  acceptable_worst_mic: 1200
+  strong_organisms_mic_le_64: 24
+  acceptable_organisms_mic_le_64: 10
+
+candidate_classes:
+  A_elite:
+    median_mic_max: 40
+    worst_mic_max: 350
+    organisms_mic_le_64_min: 24
+  B_near_pass:
+    median_mic_max: 100
+    worst_mic_max: 1500
+    organisms_mic_le_64_min: 8
+  C_high_novelty:
+    novelty_min: 0.55
+  D_broad_spectrum:
+    organisms_mic_le_64_min: 24
+  E_worst_case_robust:
+    worst_mic_max: 300
+  F_developable:
+    preferred_property_window: true
+  G_rescue:
+    include_failed_but_recoverable: true
+  G5_junk:
+    discard_low_complexity: true
+    discard_extreme_properties: true
+
+optimization:
+  rounds: 4
+  max_variants_per_candidate: 24
+  max_candidates_per_class_per_round: 500
+  preserve_diversity: true
+  cluster_aware_budgeting: true
+  operators:
+    - single_substitution
+    - double_substitution
+    - terminal_trim
+    - terminal_extension
+    - KR_charge_tuning
+    - ILV_hydrophobic_tuning
+    - aromatic_reduction
+    - cysteine_control
+    - motif_preserving_mutation
+
+rescue:
+  enabled: true
+  max_g_candidates_per_round: 1000
+  keep_g5_discarded: false
+  failure_modes:
+    - fail_length_low
+    - fail_length_high
+    - fail_charge_low
+    - fail_charge_high
+    - fail_hydrophobicity_low
+    - fail_hydrophobicity_high
+    - fail_cysteine_burden
+    - fail_tryptophan_burden
+    - fail_aromatic_burden
+    - fail_low_novelty
+    - fail_low_breadth
+    - fail_high_median_mic
+    - fail_high_mean_mic
+    - fail_high_worst_mic
+    - fail_local_fragility
+    - fail_low_complexity
+
+robustness:
+  enabled: true
+  local_variants_per_candidate: 32
+  accept_median_mic_max: 80
+  accept_worst_mic_max: 1200
+  accept_organisms_mic_le_64_min: 10
+  variant_types:
+    - KR_swap
+    - ILV_swap
+    - single_substitution
+    - terminal_trim
+    - terminal_extension
+    - aromatic_reduction_variant
+    - charge_density_variant
+
+pareto_selection:
+  top_panel_n: 50
+  include_top20: true
+  objectives:
+    minimize:
+      - APEX_median_MIC
+      - APEX_mean_MIC
+      - APEX_worst_MIC
+      - max_train_identity
+    maximize:
+      - organisms_MIC_le_64
+      - novelty_score
+      - local_robustness_score
+      - sequence_diversity_score
+  required_panel_roles:
+    - best_overall
+    - best_median_mic
+    - best_worst_case_mic
+    - best_breadth
+    - best_high_novelty
+    - best_short_simple
+    - best_low_tryptophan
+    - best_low_cysteine
+    - best_g_rescue_success
+    - best_balanced_developability
+
+reporting:
+  write_fasta: true
+  write_all_intermediate_tables: true
+  use_phrase_apex_predicted_mic: true
+  do_not_claim_experimental_validation: true
