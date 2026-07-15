@@ -13,16 +13,64 @@ For a tiny debug train using the bundled APEX sequences only:
 bash v3/run_tiny_debug_training.sh
 ```
 
-For the real v3 run:
+## Build an upscaled corpus
+
+Place local corpus source files here:
+
+```text
+v3/data/raw/corpus_sources/
+```
+
+Examples:
+
+```text
+v3/data/raw/corpus_sources/apd.fasta
+v3/data/raw/corpus_sources/dbamp.csv
+v3/data/raw/corpus_sources/dramp.fasta
+v3/data/raw/corpus_sources/campr.tsv
+v3/data/raw/corpus_sources/dbaasp.csv
+```
+
+Then run:
 
 ```bash
-# first place your curated APD/dbAMP/DRAMP/CAMPR FASTA/CSV here or edit INPUTS in run_v3_hybrid.sh
+bash v3/run_build_upscaled_corpus.sh
+```
+
+Main upscaled-corpus outputs:
+
+```text
+v3/data/processed/upscaled_peptide_corpus_v3.csv
+v3/data/processed/upscaled_peptide_corpus_v3.fasta
+v3/data/processed/upscaled_peptide_corpus_v3_source_summary.csv
+v3/data/processed/upscaled_peptide_corpus_v3_report.json
+```
+
+## Run v3 on the upscaled corpus
+
+```bash
+export APEX_ROOT=/home/julojays/apex
+V3_INPUTS="v3/data/processed/upscaled_peptide_corpus_v3.fasta" \
+V3_CORPUS="v3/data/processed/peptide_corpus_v3_upscaled.csv" \
+V3_CHECKPOINT="v3/checkpoints/amp_jepa_hybrid_v3_upscaled.pt" \
+V3_RAW_CANDIDATES="v3/results/raw_candidates_v3_upscaled.csv" \
+V3_RANKED_CANDIDATES="v3/results/ranked_candidates_v3_upscaled.csv" \
+V3_TOP_PANEL="v3/results/top_panel_v3_upscaled_500.csv" \
+V3_TOP_PANEL_N=500 \
+V3_APEX_SCORED_DIR="v3/results/apex_scored_v3_upscaled_500" \
+bash v3/run_v3_hybrid.sh
+```
+
+## Standard APD/default v3 run
+
+```bash
+# first place your curated APD FASTA here or edit V3_INPUTS
 # v3/data/raw/peptides.fasta
 export APEX_ROOT=/home/julojays/apex
 bash v3/run_v3_hybrid.sh
 ```
 
-If your local APEX checkout exists at `$APEX_ROOT` or `/home/julojays/apex`, `run_v3_hybrid.sh` now automatically:
+If your local APEX checkout exists at `$APEX_ROOT` or `/home/julojays/apex`, `run_v3_hybrid.sh` automatically:
 
 1. trains v3,
 2. generates candidates,
