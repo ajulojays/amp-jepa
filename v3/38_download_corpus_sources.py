@@ -11,6 +11,8 @@ Built-in direct sources
    https://aps.unmc.edu/assets/sequences/naturalAMPs_APD2024a.fasta
 2. UniProt reviewed, short antimicrobial entries as FASTA, using the UniProt
    REST API query endpoint.
+3. Optional aggressive UniProt expansion with unreviewed AMP-like entries and
+   AMP-family keyword queries.
 
 Portal/manual sources
 ---------------------
@@ -27,8 +29,9 @@ Optional public ML benchmark repositories
 Use --include-public-ml-repos to download selected public GitHub repository ZIP
 archives that are commonly used around AMP prediction. These are treated as
 secondary sources because they can contain negative/control sequences or mixed
-benchmark data. The extractor keeps only likely corpus files and avoids obvious
-negative/non-AMP paths, but the merged corpus report should still be inspected.
+benchmark data. The extractor keeps only likely positive/corpus files and avoids
+obvious negative/non-AMP paths, but the merged corpus report should still be
+inspected.
 
 After downloading, this script can optionally build the merged upscaled corpus by
 calling v3/37_build_upscaled_corpus.py.
@@ -45,6 +48,7 @@ import subprocess
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 import zipfile
 from pathlib import Path
@@ -53,11 +57,22 @@ from typing import Dict, Iterable, List
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
-UNIPROT_REVIEWED_SHORT_AMP_URL = (
-    "https://rest.uniprot.org/uniprotkb/stream?"
-    "compressed=false&format=fasta&"
-    "query=%28keyword%3A%22Antimicrobial%22%29%20AND%20"
-    "%28reviewed%3Atrue%29%20AND%20%28length%3A%5B8%20TO%2064%5D%29"
+
+def uniprot_stream_url(query: str) -> str:
+    return (
+        "https://rest.uniprot.org/uniprotkb/stream?"
+        + urllib.parse.urlencode(
+            {
+                "compressed": "false",
+                "format": "fasta",
+                "query": query,
+            }
+        )
+    )
+
+
+UNIPROT_REVIEWED_SHORT_AMP_URL = uniprot_stream_url(
+    '(keyword:"Antimicrobial") AND (reviewed:true) AND (length:[8 TO 64])'
 )
 
 DEFAULT_SOURCES = [
@@ -72,6 +87,75 @@ DEFAULT_SOURCES = [
         "name": "UniProt_reviewed_short_antimicrobial",
         "url": UNIPROT_REVIEWED_SHORT_AMP_URL,
         "filename": "uniprot_reviewed_short_antimicrobial.fasta",
+        "enabled": "true",
+        "kind": "file",
+    },
+]
+
+# These are broader and noisier than the default source. Use with
+# --include-uniprot-expanded. The corpus builder still filters length,
+# canonical residues, and low-complexity sequences.
+UNIPROT_EXPANDED_SOURCES = [
+    {
+        "name": "UniProt_all_short_antimicrobial_keyword",
+        "url": uniprot_stream_url('(keyword:"Antimicrobial") AND (length:[8 TO 100])'),
+        "filename": "uniprot_all_short_antimicrobial_keyword.fasta",
+        "enabled": "true",
+        "kind": "file",
+    },
+    {
+        "name": "UniProt_defensin_short",
+        "url": uniprot_stream_url('(protein_name:defensin) AND (length:[8 TO 100])'),
+        "filename": "uniprot_defensin_short.fasta",
+        "enabled": "true",
+        "kind": "file",
+    },
+    {
+        "name": "UniProt_cathelicidin_short",
+        "url": uniprot_stream_url('(protein_name:cathelicidin) AND (length:[8 TO 100])'),
+        "filename": "uniprot_cathelicidin_short.fasta",
+        "enabled": "true",
+        "kind": "file",
+    },
+    {
+        "name": "UniProt_bacteriocin_short",
+        "url": uniprot_stream_url('(protein_name:bacteriocin) AND (length:[8 TO 100])'),
+        "filename": "uniprot_bacteriocin_short.fasta",
+        "enabled": "true",
+        "kind": "file",
+    },
+    {
+        "name": "UniProt_cecropin_short",
+        "url": uniprot_stream_url('(protein_name:cecropin) AND (length:[8 TO 100])'),
+        "filename": "uniprot_cecropin_short.fasta",
+        "enabled": "true",
+        "kind": "file",
+    },
+    {
+        "name": "UniProt_magainin_short",
+        "url": uniprot_stream_url('(protein_name:magainin) AND (length:[8 TO 100])'),
+        "filename": "uniprot_magainin_short.fasta",
+        "enabled": "true",
+        "kind": "file",
+    },
+    {
+        "name": "UniProt_histatin_short",
+        "url": uniprot_stream_url('(protein_name:histatin) AND (length:[8 TO 100])'),
+        "filename": "uniprot_histatin_short.fasta",
+        "enabled": "true",
+        "kind": "file",
+    },
+    {
+        "name": "UniProt_dermaseptin_short",
+        "url": uniprot_stream_url('(protein_name:dermaseptin) AND (length:[8 TO 100])'),
+        "filename": "uniprot_dermaseptin_short.fasta",
+        "enabled": "true",
+        "kind": "file",
+    },
+    {
+        "name": "UniProt_temporin_short",
+        "url": uniprot_stream_url('(protein_name:temporin) AND (length:[8 TO 100])'),
+        "filename": "uniprot_temporin_short.fasta",
         "enabled": "true",
         "kind": "file",
     },
@@ -108,7 +192,31 @@ PUBLIC_ML_REPO_SOURCES = [
         "filename": "AMPCliff_generation.zip",
         "enabled": "true",
         "kind": "github_zip",
-        "notes": "Public AMPCliff-generation repository from AMPCliff paper; may contain MIC benchmark files.",
+        "notes": "Public AMPCliff-generation repository; may contain MIC benchmark files.",
+    },
+    {
+        "name": "dpaudel_AMP_predictor_repo",
+        "url": "https://codeload.github.com/dpaudel/Antimicrobial-Peptide-AMP-Predictor/zip/refs/heads/main",
+        "filename": "dpaudel_Antimicrobial-Peptide-AMP-Predictor.zip",
+        "enabled": "true",
+        "kind": "github_zip",
+        "notes": "Public AMP predictor repository; inspect source summary.",
+    },
+    {
+        "name": "h_khabaz_s_aureus_amp_dataset_repo",
+        "url": "https://codeload.github.com/h-khabaz/s.aureus-amp-dataset/zip/refs/heads/main",
+        "filename": "h_khabaz_s_aureus_amp_dataset.zip",
+        "enabled": "true",
+        "kind": "github_zip",
+        "notes": "Public S. aureus AMP dataset repository; inspect source summary.",
+    },
+    {
+        "name": "omar_loay_amp_identification_repo",
+        "url": "https://codeload.github.com/Omar-Loay/Antimicrobial-Peptides-Identification/zip/refs/heads/main",
+        "filename": "omar_loay_antimicrobial_peptides_identification.zip",
+        "enabled": "true",
+        "kind": "github_zip",
+        "notes": "Public AMP identification repository; inspect source summary.",
     },
 ]
 
@@ -119,12 +227,13 @@ OBVIOUS_NEGATIVE_MARKERS = [
     "nonamp",
     "non_amp",
     "non-amp",
-    "non_amp",
     "nonantimicrobial",
     "non_antimicrobial",
+    "non-antimicrobial",
     "decoy",
     "random",
     "control",
+    "shuffled",
 ]
 LIKELY_CORPUS_MARKERS = [
     "amp",
@@ -134,6 +243,10 @@ LIKELY_CORPUS_MARKERS = [
     "sequence",
     "dataset",
     "data",
+    "train",
+    "test",
+    "valid",
+    "validation",
 ]
 
 
@@ -192,7 +305,7 @@ def download_one(source: Dict[str, str], output_dir: Path, overwrite: bool, time
             request = urllib.request.Request(
                 url,
                 headers={
-                    "User-Agent": "AMP-JEPA-v3-corpus-downloader/1.1 (+research; contact via local user)",
+                    "User-Agent": "AMP-JEPA-v3-corpus-downloader/1.2 (+research; contact via local user)",
                     "Accept": "text/plain, text/csv, text/tab-separated-values, application/zip, */*",
                 },
             )
@@ -227,17 +340,25 @@ def safe_extract_member_name(member_name: str) -> str:
     return "/".join(parts)
 
 
-def is_likely_positive_corpus_path(path_text: str) -> bool:
+def is_likely_positive_corpus_path(path_text: str, permissive: bool = False) -> bool:
     lower = path_text.lower()
     suffix = Path(lower).suffix
     if suffix not in CORPUS_EXTENSIONS:
         return False
     if any(marker in lower for marker in OBVIOUS_NEGATIVE_MARKERS):
         return False
+    if permissive:
+        return True
     return any(marker in lower for marker in LIKELY_CORPUS_MARKERS)
 
 
-def extract_corpus_files_from_zip(zip_path: Path, output_dir: Path, source_name: str, overwrite: bool) -> Dict[str, object]:
+def extract_corpus_files_from_zip(
+    zip_path: Path,
+    output_dir: Path,
+    source_name: str,
+    overwrite: bool,
+    permissive: bool,
+) -> Dict[str, object]:
     extract_dir = output_dir / f"{zip_path.stem}_extracted"
     extract_dir.mkdir(parents=True, exist_ok=True)
 
@@ -250,7 +371,7 @@ def extract_corpus_files_from_zip(zip_path: Path, output_dir: Path, source_name:
                 if member.is_dir():
                     continue
                 safe_name = safe_extract_member_name(member.filename)
-                if not is_likely_positive_corpus_path(safe_name):
+                if not is_likely_positive_corpus_path(safe_name, permissive=permissive):
                     skipped_files += 1
                     continue
                 relative = Path(safe_name)
@@ -387,9 +508,11 @@ def main() -> None:
     parser.add_argument("--output-dir", default="v3/data/raw/corpus_sources")
     parser.add_argument("--manifest", default="", help="Optional TSV/CSV manifest with name,url,filename,enabled columns.")
     parser.add_argument("--no-defaults", action="store_true", help="Do not download built-in direct sources such as APD/UniProt.")
+    parser.add_argument("--include-uniprot-expanded", action="store_true", help="Also download broader/noisier UniProt AMP-family FASTA queries.")
     parser.add_argument("--include-public-ml-repos", action="store_true", help="Also download selected public GitHub AMP benchmark repository ZIP archives and extract likely positive corpus files.")
+    parser.add_argument("--permissive-archive-extraction", action="store_true", help="Extract all corpus-like CSV/TSV/TXT/FASTA files from public repo ZIPs unless path has obvious negative/control markers.")
     parser.add_argument("--overwrite", action="store_true")
-    parser.add_argument("--timeout", type=int, default=90)
+    parser.add_argument("--timeout", type=int, default=120)
     parser.add_argument("--retries", type=int, default=3)
     parser.add_argument("--write-template", default="", help="Write a manifest template and exit.")
     parser.add_argument("--build-corpus", action="store_true", help="Run v3/37_build_upscaled_corpus.py after downloads.")
@@ -410,6 +533,8 @@ def main() -> None:
     sources: List[Dict[str, str]] = []
     if not args.no_defaults:
         sources.extend(DEFAULT_SOURCES)
+    if args.include_uniprot_expanded:
+        sources.extend(UNIPROT_EXPANDED_SOURCES)
     if args.include_public_ml_repos:
         sources.extend(PUBLIC_ML_REPO_SOURCES)
     if args.manifest:
@@ -417,7 +542,7 @@ def main() -> None:
 
     enabled_sources = [source for source in sources if truthy(source.get("enabled", "true"))]
     if not enabled_sources:
-        raise SystemExit("[ERROR] No enabled download sources. Use defaults, --manifest, --include-public-ml-repos, or --write-template.")
+        raise SystemExit("[ERROR] No enabled download sources. Use defaults, --manifest, --include-uniprot-expanded, --include-public-ml-repos, or --write-template.")
 
     results = []
     extraction_results = []
@@ -430,7 +555,13 @@ def main() -> None:
         kind = str(source.get("kind", "file")).strip().lower()
         downloaded_path = Path(str(result.get("path", "")))
         if kind in {"github_zip", "zip", "archive"} and downloaded_path.exists() and status in {"downloaded", "exists"}:
-            extraction = extract_corpus_files_from_zip(downloaded_path, output_dir, str(source.get("name", downloaded_path.stem)), args.overwrite)
+            extraction = extract_corpus_files_from_zip(
+                downloaded_path,
+                output_dir,
+                str(source.get("name", downloaded_path.stem)),
+                args.overwrite,
+                permissive=args.permissive_archive_extraction,
+            )
             extraction_results.append(extraction)
             print(f"[{extraction.get('status')}] {extraction.get('name')} -> {extraction.get('n_extracted_files', 0)} corpus-like files")
 
