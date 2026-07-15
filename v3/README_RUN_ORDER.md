@@ -21,6 +21,15 @@ The repo includes a downloader for public/direct corpus URLs. By default it down
 bash v3/run_download_corpus_sources.sh
 ```
 
+For a broader but noisier public-corpus build:
+
+```bash
+INCLUDE_UNIPROT_EXPANDED=1 \
+INCLUDE_PUBLIC_ML_REPOS=1 \
+PERMISSIVE_ARCHIVE_EXTRACTION=1 \
+bash v3/run_download_corpus_sources.sh
+```
+
 Main download/build outputs:
 
 ```text
@@ -86,7 +95,47 @@ v3/data/processed/upscaled_peptide_corpus_v3_source_summary.csv
 v3/data/processed/upscaled_peptide_corpus_v3_report.json
 ```
 
-## Run v3 on the upscaled corpus
+## QC the upscaled corpus before retraining
+
+Run QC before training on broad public/benchmark corpus builds:
+
+```bash
+bash v3/run_qc_upscaled_corpus.sh
+```
+
+Main QC outputs:
+
+```text
+v3/results/upscaled_corpus_qc/upscaled_corpus_qc_table.csv
+v3/results/upscaled_corpus_qc/upscaled_corpus_trainable_core.csv
+v3/results/upscaled_corpus_qc/upscaled_corpus_trainable_core.fasta
+v3/results/upscaled_corpus_qc/upscaled_corpus_review_or_excluded.csv
+v3/results/upscaled_corpus_qc/source_qc_summary.csv
+v3/results/upscaled_corpus_qc/length_bin_summary.csv
+v3/results/upscaled_corpus_qc/upscaled_corpus_qc_report.json
+v3/results/upscaled_corpus_qc/upscaled_corpus_qc_report.md
+```
+
+Use `upscaled_corpus_trainable_core.fasta` for the cleaner expanded-corpus v3 run. Keep the full corpus for audit and ablation.
+
+## Run v3 on the QC-cleaned upscaled corpus
+
+```bash
+export APEX_ROOT=/home/julojays/apex
+V3_INPUTS="v3/results/upscaled_corpus_qc/upscaled_corpus_trainable_core.fasta" \
+V3_CORPUS="v3/data/processed/peptide_corpus_v3_upscaled_qc_core.csv" \
+V3_CHECKPOINT="v3/checkpoints/amp_jepa_hybrid_v3_upscaled_qc_core.pt" \
+V3_RAW_CANDIDATES="v3/results/raw_candidates_v3_upscaled_qc_core.csv" \
+V3_RANKED_CANDIDATES="v3/results/ranked_candidates_v3_upscaled_qc_core.csv" \
+V3_TOP_PANEL="v3/results/top_panel_v3_upscaled_qc_core_500.csv" \
+V3_TOP_PANEL_N=500 \
+V3_APEX_SCORED_DIR="v3/results/apex_scored_v3_upscaled_qc_core_500" \
+bash v3/run_v3_hybrid.sh
+```
+
+## Run v3 on the raw upscaled corpus
+
+Use this only for ablation against the cleaner QC core:
 
 ```bash
 export APEX_ROOT=/home/julojays/apex
