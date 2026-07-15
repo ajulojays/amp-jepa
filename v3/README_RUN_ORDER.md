@@ -13,7 +13,47 @@ For a tiny debug train using the bundled APEX sequences only:
 bash v3/run_tiny_debug_training.sh
 ```
 
-## Build an upscaled corpus
+## Download public corpus sources
+
+The repo includes a downloader for public/direct corpus URLs. By default it downloads APD2024a natural AMPs into `v3/data/raw/corpus_sources/` and then builds the upscaled corpus.
+
+```bash
+bash v3/run_download_corpus_sources.sh
+```
+
+Main download/build outputs:
+
+```text
+v3/data/raw/corpus_sources/apd2024a_natural_amps.fasta
+v3/data/raw/corpus_sources/corpus_download_report.json
+v3/data/processed/upscaled_peptide_corpus_v3.csv
+v3/data/processed/upscaled_peptide_corpus_v3.fasta
+v3/data/processed/upscaled_peptide_corpus_v3_source_summary.csv
+v3/data/processed/upscaled_peptide_corpus_v3_report.json
+```
+
+For dbAMP, DRAMP, CAMPR/CAMP, DBAASP, StarPep, or local lab-curated exports, either place FASTA/CSV/TSV files in:
+
+```text
+v3/data/raw/corpus_sources/
+```
+
+or copy the template below, paste direct export URLs, set `enabled=true`, and rerun the downloader:
+
+```bash
+cp v3/data/raw/corpus_sources_manifest.example.tsv v3/data/raw/corpus_sources_manifest.local.tsv
+nano v3/data/raw/corpus_sources_manifest.local.tsv
+
+python v3/38_download_corpus_sources.py \
+  --manifest v3/data/raw/corpus_sources_manifest.local.tsv \
+  --output-dir v3/data/raw/corpus_sources \
+  --build-corpus \
+  --output-prefix v3/data/processed/upscaled_peptide_corpus_v3
+```
+
+Raw third-party corpus files are local working data and should generally remain uncommitted unless their license explicitly permits redistribution.
+
+## Build an upscaled corpus from existing local files
 
 Place local corpus source files here:
 
