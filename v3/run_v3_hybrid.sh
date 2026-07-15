@@ -15,6 +15,8 @@ RAW_CANDIDATES="v3/results/raw_candidates_v3.csv"
 RANKED_CANDIDATES="v3/results/ranked_candidates_v3.csv"
 TOP_PANEL="v3/results/top_panel_v3.csv"
 APEX_COMPARATOR="v3/results/apex_comparator_v3.csv"
+APEX_SCORED_DIR="v3/results/apex_scored_v3"
+APEX_ROOT_DEFAULT="${APEX_ROOT:-/home/julojays/apex}"
 
 mkdir -p v3/data/raw v3/data/processed v3/checkpoints v3/results
 
@@ -58,7 +60,24 @@ python v3/06_make_top_panel.py \
   --output "$TOP_PANEL" \
   --top 50
 
+if [[ "${RUN_APEX:-auto}" == "0" || "${RUN_APEX:-auto}" == "false" ]]; then
+  echo "=== v3-25: APEX MIC scoring skipped because RUN_APEX=${RUN_APEX} ==="
+elif [[ -d "${APEX_ROOT_DEFAULT}/trained_models" ]]; then
+  echo "=== v3-25: Score top v3 candidates with APEX MIC ensemble ==="
+  python v3/25_score_v3_candidates_with_apex.py \
+    --candidates "$TOP_PANEL" \
+    --output-dir "$APEX_SCORED_DIR" \
+    --oracle v3/data/external/apex_oracle_ranked_summary.csv \
+    --apex-root "$APEX_ROOT_DEFAULT"
+else
+  echo "=== v3-25: APEX MIC scoring skipped ==="
+  echo "APEX model directory not found: ${APEX_ROOT_DEFAULT}/trained_models"
+  echo "Set APEX_ROOT=/path/to/apex or run: bash v3/run_score_v3_apex.sh after APEX is available."
+fi
+
 echo "[DONE] v3 pipeline complete. Review:"
 echo "  $RANKED_CANDIDATES"
 echo "  $TOP_PANEL"
 echo "  $APEX_COMPARATOR"
+echo "  $APEX_SCORED_DIR/apex_scored_v3_candidates.csv  # if APEX was available"
+echo "  $APEX_SCORED_DIR/apex_scored_v3_vs_oracle.csv # if APEX was available"
