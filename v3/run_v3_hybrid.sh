@@ -13,6 +13,7 @@ CORPUS="v3/data/processed/peptide_corpus_v3.csv"
 CHECKPOINT="v3/checkpoints/amp_jepa_hybrid_v3.pt"
 RAW_CANDIDATES="v3/results/raw_candidates_v3.csv"
 RANKED_CANDIDATES="v3/results/ranked_candidates_v3.csv"
+TOP_PANEL="v3/results/top_panel_v3.csv"
 APEX_COMPARATOR="v3/results/apex_comparator_v3.csv"
 
 mkdir -p v3/data/raw v3/data/processed v3/checkpoints v3/results
@@ -51,6 +52,13 @@ python v3/04_compare_apex_oracle.py \
   --apex v3/data/external/apex_oracle_ranked_summary.csv \
   --output "$APEX_COMPARATOR"
 
+echo "=== v3-06: Export top candidate panel ==="
+python v3/06_make_top_panel.py \
+  --ranked "$RANKED_CANDIDATES" \
+  --output "$TOP_PANEL" \
+  --top 50
+
 echo "[DONE] v3 pipeline complete. Review:"
 echo "  $RANKED_CANDIDATES"
+echo "  $TOP_PANEL"
 echo "  $APEX_COMPARATOR"
