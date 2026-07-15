@@ -2,11 +2,14 @@
 """Build an upscaled, deduplicated AMP corpus for AMP-JEPA-Hybrid v3.
 
 This script is a stronger corpus-preparation layer than 00_prepare_corpus.py.
-It is designed for combining APD, dbAMP, DRAMP, CAMPR, DBAASP exports, and
-other local AMP FASTA/CSV/TSV files without losing source provenance.
+It is designed for combining APD, dbAMP, DRAMP, CAMPR, DBAASP exports,
+UniProt FASTA exports, public benchmark repositories, and other local AMP
+FASTA/CSV/TSV files without losing source provenance.
 
-Inputs can be FASTA, CSV, TSV, or TAB files. CSV/TSV files must contain one of:
-sequence, Sequence, PeptideSequence, peptide_sequence, aa_sequence, seq.
+Inputs can be FASTA, CSV, TSV, TAB, or TXT files. For tables, the script first
+looks for known sequence-column names and then falls back to automatic peptide
+column detection. This matters because many public AMP benchmark repos use
+idiosyncratic column names.
 
 Outputs
 -------
@@ -33,11 +36,22 @@ HYDROPHOBIC = set("AVILMFWYC")
 SEQ_COLUMNS = [
     "sequence",
     "Sequence",
+    "sequences",
+    "Sequences",
     "PeptideSequence",
     "peptide_sequence",
+    "peptide_seq",
+    "peptide",
+    "Peptide",
+    "peptides",
     "aa_sequence",
+    "amino_acid_sequence",
+    "aminoacid_sequence",
+    "protein_sequence",
+    "protein_seq",
     "seq",
     "Seq",
+    "SEQ",
 ]
 ID_COLUMNS = [
     "id",
@@ -46,6 +60,8 @@ ID_COLUMNS = [
     "Name",
     "accession",
     "Accession",
+    "entry",
+    "Entry",
     "peptide_id",
     "Peptide_ID",
     "DRAMP_ID",
@@ -66,21 +82,25 @@ def clean_sequence(value: object) -> str:
 
 
 def source_name_from_path(path: Path) -> str:
-    stem = path.stem.lower()
-    if "apd" in stem:
+    text = str(path).lower()
+    if "apd" in text:
         return "APD"
-    if "dbamp" in stem:
+    if "dbamp" in text:
         return "dbAMP"
-    if "dramp" in stem:
+    if "dramp" in text:
         return "DRAMP"
-    if "campr" in stem or "camp" in stem:
+    if "campr" in text or "camp" in text:
         return "CAMPR"
-    if "dbaasp" in stem:
+    if "dbaasp" in text:
         return "DBAASP"
-    if "starpep" in stem:
+    if "starpep" in text:
         return "StarPep"
-    if "uniprot" in stem:
+    if "uniprot" in text:
         return "UniProt"
+    if "amplify" in text:
+        return "AMPlify"
+    if "ampcliff" in text:
+        return "AMPCliff"
     return path.stem
 
 
@@ -121,16 +141,82 @@ def read_fasta(path: Path, source_label: str) -> pd.DataFrame:
                 }
             )
 
+    # Some public TXT files are one raw peptide per line rather than FASTA.
+    if not rows and path.suffix.lower() == ".txt":
+        with path.open("r", encoding="utf-8", errors="ignore") as handle:
+            for i, raw_line in enumerate(handle, start=1):
+                seq = clean_sequence(raw_line)
+                if seq:
+                    rows.append(
+                        {
+                            "source_id": f"{source_label}_{i}",
+                            "source_header": f"{source_label}_{i}",
+                            "sequence": seq,
+                            "source_name": source_label,
+                            "source_file": str(path),
+                        }
+                    )
+
     return pd.DataFrame(rows)
 
 
-def read_table(path: Path, source_label: str) -> pd.DataFrame:
-    sep = "\t" if path.suffix.lower() in {".tsv", ".tab"} else ","
-    df = pd.read_csv(path, sep=sep, low_memory=False)
+def peptide_like_fraction(values: pd.Series, min_len: int = 8, max_len: int = 100) -> float:
+    if values.empty:
+        return 0.0
+    sample = values.dropna().astype(str).head(500)
+    if sample.empty:
+        return 0.0
+    cleaned = sample.map(clean_sequence)
+    ok = cleaned.map(lambda seq: min_len <= len(seq) <= max_len)
+    # Penalize columns where cleaning removed a lot of text, e.g. descriptions.
+    retention = cleaned.str.len() / sample.str.len().replace(0, 1)
+    ok = ok & (retention >= 0.70)
+    return float(ok.mean())
 
-    seq_col = next((column for column in SEQ_COLUMNS if column in df.columns), None)
+
+def infer_sequence_column(df: pd.DataFrame) -> str | None:
+    for column in SEQ_COLUMNS:
+        if column in df.columns:
+            return column
+
+    candidates = []
+    for column in df.columns:
+        if df[column].dtype == object or str(df[column].dtype).startswith("string"):
+            frac = peptide_like_fraction(df[column])
+            if frac >= 0.50:
+                candidates.append((frac, str(column)))
+
+    if not candidates:
+        return None
+    candidates.sort(reverse=True)
+    return candidates[0][1]
+
+
+def sniff_table(path: Path) -> tuple[pd.DataFrame, str]:
+    suffix = path.suffix.lower()
+    if suffix in {".tsv", ".tab"}:
+        return pd.read_csv(path, sep="\t", low_memory=False), "\t"
+
+    # Try comma, tab, and semicolon because public benchmark exports are messy.
+    last_error = None
+    for sep in [",", "\t", ";"]:
+        try:
+            df = pd.read_csv(path, sep=sep, low_memory=False)
+            if df.shape[1] > 1 or sep == ",":
+                return df, sep
+        except Exception as exc:  # pragma: no cover - file dependent
+            last_error = exc
+    if last_error:
+        raise last_error
+    return pd.read_csv(path, low_memory=False), ","
+
+
+def read_table(path: Path, source_label: str) -> pd.DataFrame:
+    df, _sep = sniff_table(path)
+
+    seq_col = infer_sequence_column(df)
     if seq_col is None:
-        raise ValueError(f"No sequence column found in {path}; tried {SEQ_COLUMNS}")
+        raise ValueError(f"No peptide-like sequence column found in {path}; tried known columns and automatic inference")
 
     id_col = next((column for column in ID_COLUMNS if column in df.columns), None)
 
@@ -140,6 +226,7 @@ def read_table(path: Path, source_label: str) -> pd.DataFrame:
     out["sequence"] = df[seq_col].map(clean_sequence)
     out["source_name"] = source_label
     out["source_file"] = str(path)
+    out["source_sequence_column"] = str(seq_col)
 
     return out
 
@@ -147,9 +234,15 @@ def read_table(path: Path, source_label: str) -> pd.DataFrame:
 def read_input(path: Path, source_label: str | None = None) -> pd.DataFrame:
     source_label = source_label or source_name_from_path(path)
     suffix = path.suffix.lower()
-    if suffix in {".fa", ".fasta", ".faa", ".fna", ".txt"}:
+    if suffix in {".fa", ".fasta", ".faa", ".fna"}:
         return read_fasta(path, source_label)
     if suffix in {".csv", ".tsv", ".tab"}:
+        return read_table(path, source_label)
+    if suffix == ".txt":
+        # Try FASTA/raw-line first, then table fallback.
+        fasta_df = read_fasta(path, source_label)
+        if not fasta_df.empty:
+            return fasta_df
         return read_table(path, source_label)
     raise ValueError(f"Unsupported input file type: {path}")
 
@@ -203,8 +296,8 @@ def expand_inputs(paths: Iterable[str]) -> List[Path]:
     for raw_path in paths:
         path = resolve_path(raw_path)
         if path.is_dir():
-            for suffix in ["*.fasta", "*.fa", "*.faa", "*.csv", "*.tsv", "*.tab", "*.txt"]:
-                expanded.extend(sorted(path.glob(suffix)))
+            for suffix in ["*.fasta", "*.fa", "*.faa", "*.fna", "*.csv", "*.tsv", "*.tab", "*.txt"]:
+                expanded.extend(sorted(path.rglob(suffix)))
         else:
             expanded.extend(sorted(path.parent.glob(path.name)))
     # Preserve order but remove duplicates.
@@ -259,7 +352,9 @@ def main() -> None:
             print(f"[WARN] Skipping {path}: {exc}")
             continue
         frames.append(df)
-        print(f"[INFO] Read {len(df):,} rows from {path} as {df['source_name'].iloc[0] if len(df) else source_name_from_path(path)}")
+        label = df["source_name"].iloc[0] if len(df) else source_name_from_path(path)
+        seq_col = df.get("source_sequence_column", pd.Series(["FASTA/raw"])).iloc[0] if len(df) else "NA"
+        print(f"[INFO] Read {len(df):,} rows from {path} as {label} using {seq_col}")
 
     if not frames:
         message = "[ERROR] No readable corpus sources were loaded."
