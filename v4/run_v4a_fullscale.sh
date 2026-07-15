@@ -4,9 +4,8 @@
 # ==============================================================================
 # V4A = V3 backbone + whole-population optimization + failure-aware G-Rescue.
 #
-# This runner uses the existing v3 APEX scorer for all APEX inference and adds
-# V4A landscape mapping, sequence-level optimization, G-Rescue gain analysis,
-# and Pareto final panel selection.
+# This runner uses chunked APEX inference for full-scale pools so smaller GPUs do
+# not run out of memory when scoring thousands of peptides.
 # ==============================================================================
 
 set -euo pipefail
@@ -18,6 +17,12 @@ MAX_SEEDS="${MAX_SEEDS:-20000}"
 MAX_PARENTS="${MAX_PARENTS:-1200}"
 MAX_VARIANTS="${MAX_VARIANTS:-8000}"
 TOP_FASTA_COUNT="${TOP_FASTA_COUNT:-50}"
+APEX_BATCH_SIZE="${APEX_BATCH_SIZE:-64}"
+APEX_MIN_BATCH_SIZE="${APEX_MIN_BATCH_SIZE:-8}"
+APEX_DEVICE="${APEX_DEVICE:-auto}"
+
+# Helps reduce CUDA fragmentation on some PyTorch/CUDA installs.
+export PYTORCH_CUDA_ALLOC_CONF="${PYTORCH_CUDA_ALLOC_CONF:-expandable_segments:True}"
 
 mkdir -p \
   "${RESULTS_ROOT}/seed_pool" \
@@ -29,12 +34,15 @@ mkdir -p \
   "${RESULTS_ROOT}/logs"
 
 echo "=== AMP-JEPA-HYBRID V4A FULL-SCALE PIPELINE ==="
-echo "APEX_ROOT:    ${APEX_ROOT}"
-echo "V3_RESULTS:   ${V3_RESULTS}"
-echo "RESULTS_ROOT: ${RESULTS_ROOT}"
-echo "MAX_SEEDS:    ${MAX_SEEDS}"
-echo "MAX_PARENTS:  ${MAX_PARENTS}"
-echo "MAX_VARIANTS: ${MAX_VARIANTS}"
+echo "APEX_ROOT:          ${APEX_ROOT}"
+echo "V3_RESULTS:         ${V3_RESULTS}"
+echo "RESULTS_ROOT:       ${RESULTS_ROOT}"
+echo "MAX_SEEDS:          ${MAX_SEEDS}"
+echo "MAX_PARENTS:        ${MAX_PARENTS}"
+echo "MAX_VARIANTS:       ${MAX_VARIANTS}"
+echo "APEX_BATCH_SIZE:    ${APEX_BATCH_SIZE}"
+echo "APEX_MIN_BATCH_SIZE:${APEX_MIN_BATCH_SIZE}"
+echo "APEX_DEVICE:        ${APEX_DEVICE}"
 echo
 
 # ------------------------------------------------------------------------------
@@ -48,12 +56,15 @@ python v4/00_prepare_v4a_seed_pool.py \
   2>&1 | tee "${RESULTS_ROOT}/logs/00_prepare_seed_pool.log"
 
 # ------------------------------------------------------------------------------
-echo "[V4A-01] APEX-score seed pool using proven v3 scorer"
+echo "[V4A-01] APEX-score seed pool using chunked scorer"
 # ------------------------------------------------------------------------------
-python v3/25_score_v3_candidates_with_apex.py \
+python v4/01_score_candidates_chunked_with_apex.py \
   --candidates "${RESULTS_ROOT}/seed_pool/v4a_seed_candidates.csv" \
   --output-dir "${RESULTS_ROOT}/seed_pool/apex_seed_scoring" \
   --apex-root "${APEX_ROOT}" \
+  --batch-size "${APEX_BATCH_SIZE}" \
+  --min-batch-size "${APEX_MIN_BATCH_SIZE}" \
+  --device "${APEX_DEVICE}" \
   --top-fasta-count "${TOP_FASTA_COUNT}" \
   2>&1 | tee "${RESULTS_ROOT}/logs/01_score_seed_pool.log"
 
@@ -77,12 +88,15 @@ python v4/03_optimize_candidate_population.py \
   2>&1 | tee "${RESULTS_ROOT}/logs/03_optimize_population.log"
 
 # ------------------------------------------------------------------------------
-echo "[V4A-04] APEX-score optimized/rescued variants using v3 scorer"
+echo "[V4A-04] APEX-score optimized/rescued variants using chunked scorer"
 # ------------------------------------------------------------------------------
-python v3/25_score_v3_candidates_with_apex.py \
+python v4/01_score_candidates_chunked_with_apex.py \
   --candidates "${RESULTS_ROOT}/optimization/optimized_variants.csv" \
   --output-dir "${RESULTS_ROOT}/optimization/apex_optimized_scoring" \
   --apex-root "${APEX_ROOT}" \
+  --batch-size "${APEX_BATCH_SIZE}" \
+  --min-batch-size "${APEX_MIN_BATCH_SIZE}" \
+  --device "${APEX_DEVICE}" \
   --top-fasta-count "${TOP_FASTA_COUNT}" \
   2>&1 | tee "${RESULTS_ROOT}/logs/04_score_optimized_variants.log"
 
