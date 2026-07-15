@@ -1,0 +1,32 @@
+{
+  "batch_label": "dbaasp1_batch1",
+  "input_files": {
+    "peptides": "peptides.csv",
+    "target_activity": "activity-against-target-species.csv",
+    "toxicity": "hemolytic-and-cytotoxic-activities.csv",
+    "antibiofilm": "peptides-antibiofilm-activities.csv",
+    "fasta": "peptides-fasta.txt"
+  },
+  "row_counts": {
+    "peptides_metadata_rows": 2000,
+    "fasta_records": 1988,
+    "activity_against_target_species_rows": 18304,
+    "hemolytic_cytotoxic_rows": 1812,
+    "antibiofilm_rows": 80
+  },
+  "harmonized_counts": {
+    "master_peptides": 2000,
+    "with_fasta_record": 1988,
+    "missing_fasta_record": 12,
+    "canonical_single_chain_trainable_unique_sequences": 1922,
+    "mic_label_rows_with_canonical_sequence": 13788,
+    "activity_rows_with_missing_sequence_after_join": 147
+  },
+  "notes": [
+    "No MIC unit conversion was performed. uM, ug_per_ml, and nmol_per_g are kept separate.",
+    "Multimer and multi-peptide records are preserved in the master table but excluded from the single-chain trainable sequence FASTA/CSV.",
+    "Activity tables are long-format and joined to sequence_clean by DBAASP numeric ID where possible.",
+    "value_num is the first parsed numeric value from the raw activity field; value_qualifier preserves <, <=, >, >= when present.",
+    "The GitHub connector session recorded metadata and scripts; large harmonized CSV/FASTA/ZIP files should be added locally with normal git add/commit/push after downloading the bundle."
+  ]
+}
