@@ -4,21 +4,35 @@
 # ==============================================================================
 set -euo pipefail
 
-# Replace this with your merged APD/dbAMP/DRAMP/CAMPR file or FASTA.
-INPUTS=(
-  "v3/data/raw/peptides.fasta"
-)
+# Default input is the APD/raw peptide FASTA. To train on an upscaled corpus, run:
+#   V3_INPUTS="v3/data/processed/upscaled_peptide_corpus_v3.fasta" bash v3/run_v3_hybrid.sh
+# Multiple files may be passed as a space-separated string in V3_INPUTS.
+if [[ -n "${V3_INPUTS:-}" ]]; then
+  # shellcheck disable=SC2206
+  INPUTS=(${V3_INPUTS})
+else
+  INPUTS=(
+    "v3/data/raw/peptides.fasta"
+  )
+fi
 
-CORPUS="v3/data/processed/peptide_corpus_v3.csv"
-CHECKPOINT="v3/checkpoints/amp_jepa_hybrid_v3.pt"
-RAW_CANDIDATES="v3/results/raw_candidates_v3.csv"
-RANKED_CANDIDATES="v3/results/ranked_candidates_v3.csv"
-TOP_PANEL="v3/results/top_panel_v3.csv"
-APEX_COMPARATOR="v3/results/apex_comparator_v3.csv"
-APEX_SCORED_DIR="v3/results/apex_scored_v3"
+CORPUS="${V3_CORPUS:-v3/data/processed/peptide_corpus_v3.csv}"
+CHECKPOINT="${V3_CHECKPOINT:-v3/checkpoints/amp_jepa_hybrid_v3.pt}"
+RAW_CANDIDATES="${V3_RAW_CANDIDATES:-v3/results/raw_candidates_v3.csv}"
+RANKED_CANDIDATES="${V3_RANKED_CANDIDATES:-v3/results/ranked_candidates_v3.csv}"
+TOP_PANEL="${V3_TOP_PANEL:-v3/results/top_panel_v3.csv}"
+APEX_COMPARATOR="${V3_APEX_COMPARATOR:-v3/results/apex_comparator_v3.csv}"
+APEX_SCORED_DIR="${V3_APEX_SCORED_DIR:-v3/results/apex_scored_v3}"
 APEX_ROOT_DEFAULT="${APEX_ROOT:-/home/julojays/apex}"
+TOP_PANEL_N="${V3_TOP_PANEL_N:-50}"
+GENERATE_N="${V3_GENERATE_N:-5000}"
+TRAIN_EPOCHS="${V3_TRAIN_EPOCHS:-30}"
+BATCH_SIZE="${V3_BATCH_SIZE:-128}"
 
 mkdir -p v3/data/raw v3/data/processed v3/checkpoints v3/results
+
+printf '=== v3 input corpus files ===\n'
+printf '  %s\n' "${INPUTS[@]}"
 
 echo "=== v3-00: Prepare curated peptide corpus ==="
 python v3/00_prepare_corpus.py \
@@ -31,15 +45,15 @@ echo "=== v3-01: Train AMP-JEPA-Hybrid v3 ==="
 python v3/01_train_v3_hybrid.py \
   --corpus "$CORPUS" \
   --checkpoint "$CHECKPOINT" \
-  --epochs 30 \
-  --batch-size 128 \
+  --epochs "$TRAIN_EPOCHS" \
+  --batch-size "$BATCH_SIZE" \
   --max-len 64
 
 echo "=== v3-02: Generate candidates ==="
 python v3/02_generate_candidates.py \
   --checkpoint "$CHECKPOINT" \
   --output "$RAW_CANDIDATES" \
-  --n 5000 \
+  --n "$GENERATE_N" \
   --temperature 0.9
 
 echo "=== v3-03: Rank candidates ==="
@@ -58,7 +72,7 @@ echo "=== v3-06: Export top candidate panel ==="
 python v3/06_make_top_panel.py \
   --ranked "$RANKED_CANDIDATES" \
   --output "$TOP_PANEL" \
-  --top 50
+  --top "$TOP_PANEL_N"
 
 if [[ "${RUN_APEX:-auto}" == "0" || "${RUN_APEX:-auto}" == "false" ]]; then
   echo "=== v3-25/v3-26: APEX MIC scoring skipped because RUN_APEX=${RUN_APEX} ==="
@@ -82,6 +96,7 @@ else
 fi
 
 echo "[DONE] v3 pipeline complete. Review:"
+echo "  $CORPUS"
 echo "  $RANKED_CANDIDATES"
 echo "  $TOP_PANEL"
 echo "  $APEX_COMPARATOR"
