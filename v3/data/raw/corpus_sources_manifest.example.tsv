@@ -1,7 +1,12 @@
-name	url	filename	enabled	notes
-APD2024a_naturalAMPs	https://aps.unmc.edu/assets/sequences/naturalAMPs_APD2024a.fasta	apd2024a_natural_amps.fasta	true	Direct public APD natural AMP FASTA URL.
-DRAMP_export		dramp_export.fasta	false	Paste a stable DRAMP export URL here, or place the file manually in v3/data/raw/corpus_sources/.
-dbAMP_export		dbamp_export.csv	false	Paste a stable dbAMP export URL here, or place the file manually in v3/data/raw/corpus_sources/.
-CAMPR_export		campr_export.fasta	false	Paste a stable CAMP/CAMPR export URL here, or place the file manually in v3/data/raw/corpus_sources/.
-DBAASP_export		dbaasp_export.csv	false	Paste a stable DBAASP export/API URL here, or place the file manually in v3/data/raw/corpus_sources/.
-StarPep_export		starpep_export.csv	false	Paste a stable StarPep export URL here, or place the file manually in v3/data/raw/corpus_sources/.
+name	url	filename	enabled	kind	notes
+APD2024a_naturalAMPs	https://aps.unmc.edu/assets/sequences/naturalAMPs_APD2024a.fasta	apd2024a_natural_amps.fasta	true	file	Direct public APD natural AMP FASTA URL.
+UniProt_reviewed_short_antimicrobial	https://rest.uniprot.org/uniprotkb/stream?compressed=false&format=fasta&query=%28keyword%3A%22Antimicrobial%22%29%20AND%20%28reviewed%3Atrue%29%20AND%20%28length%3A%5B8%20TO%2064%5D%29	uniprot_reviewed_short_antimicrobial.fasta	true	file	UniProt REST query for reviewed short antimicrobial entries.
+DRAMP_export		dramp_export.fasta	false	file	Paste a stable DRAMP export URL here, or place the file manually in v3/data/raw/corpus_sources/.
+dbAMP_export		dbamp_export.csv	false	file	Paste a stable dbAMP export URL here, or place the file manually in v3/data/raw/corpus_sources/.
+CAMPR_export		campr_export.fasta	false	file	Paste a stable CAMP/CAMPR export URL here, or place the file manually in v3/data/raw/corpus_sources/.
+DBAASP_export		dbaasp_export.csv	false	file	Paste a stable DBAASP export/API URL here, or place the file manually in v3/data/raw/corpus_sources/.
+StarPep_export		starpep_export.csv	false	file	Paste a stable StarPep export URL here, or place the file manually in v3/data/raw/corpus_sources/.
+BirolLab_AMPlify_repo	https://codeload.github.com/BirolLab/AMPlify/zip/refs/heads/master	BirolLab_AMPlify.zip	false	github_zip	Optional public AMPlify repository archive; can be large and should be inspected.
+gabrielalonde_AMP_dataset_repo	https://codeload.github.com/gabrielalonde/Antimicrobial-Peptide-Dataset-/zip/refs/heads/main	gabrielalonde_Antimicrobial-Peptide-Dataset.zip	false	github_zip	Optional public AMP dataset repository archive.
+clennartz_protein_lm_amp_benchmark_repo	https://codeload.github.com/clennartz-umass/protein-lm-amp-benchmark/zip/refs/heads/main	clennartz_protein_lm_amp_benchmark.zip	false	github_zip	Optional public protein-LM AMP benchmark repository archive.
+AMPCliff_generation_repo	https://codeload.github.com/Kewei2023/AMPCliff-generation/zip/refs/heads/main	AMPCliff_generation.zip	false	github_zip	Optional AMPCliff-generation repository archive; inspect extracted files.
