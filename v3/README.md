@@ -44,38 +44,51 @@ v3/
 ├── requirements-v3.txt
 ├── run_v3_hybrid.sh
 ├── ampjepa_hybrid_v3.py
-├── 00_prepare_v3_corpus.py
+├── 00_prepare_corpus.py
 ├── 01_train_v3_hybrid.py
-├── 02_generate_v3_candidates.py
-├── 03_rank_v3_candidates.py
+├── 02_generate_candidates.py
+├── 03_rank_candidates.py
 └── data/
-    └── apex_oracle_ranked_summary.csv
+    └── external/
+        └── apex_oracle_ranked_summary.csv
 ```
 
-## Quick start
+## Quick run
 
-Edit `INPUTS` in `run_v3_hybrid.sh` so it points to your 20k AMP file or FASTA files.
+Edit the input file path in `run_v3_hybrid.sh`, then run:
 
 ```bash
-cd amp-jepa
+cd /path/to/amp-jepa
 pip install -r v3/requirements-v3.txt
 bash v3/run_v3_hybrid.sh
 ```
 
-## Expected outputs
+Default expected input:
 
 ```text
-v3/outputs/peptide_corpus_v3.csv
-v3/outputs/amp_jepa_hybrid_v3.pt
-v3/outputs/generated_candidates_v3.csv
-v3/outputs/ranked_candidates_v3.csv
-v3/outputs/v3_summary.txt
+v3/data/raw/peptides.fasta
 ```
 
-## Honest interpretation
+You can replace this with APD, dbAMP, DRAMP, CAMPR, or a merged curated file.
 
-v3 can support claims like:
+## Outputs
 
-> AMP-JEPA-Hybrid v3 generates AMP-like, novel, diverse candidates that are computationally plausible and can be externally compared with APEX/ApexOracle predictions.
+```text
+v3/data/processed/peptide_corpus_v3.csv
+v3/checkpoints/amp_jepa_hybrid_v3.pt
+v3/results/raw_candidates_v3.csv
+v3/results/ranked_candidates_v3.csv
+v3/results/apex_comparator_v3.csv
+```
 
-Do **not** claim it beats APEX unless the same peptides are evaluated under the same benchmark or validated experimentally.
+## Interpretation
+
+v3 can honestly support this type of claim:
+
+> AMP-JEPA-Hybrid v3 generates candidate AMPs that satisfy AMP-like design constraints and can be prioritized by novelty, diversity, developability, and external APEX-style oracle support.
+
+It should not yet claim:
+
+> AMP-JEPA-Hybrid v3 beats APEX experimentally.
+
+That requires matching wet-lab MIC/hemolysis/cytotoxicity data or a shared benchmark with the same target labels.
