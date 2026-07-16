@@ -9,7 +9,7 @@ V3:
   generate AMP-like candidates -> APEX screen -> select top hits
 
 V4A:
-  generate candidates -> score all candidates -> map the landscape -> diagnose failures -> optimize/rescue -> rescore -> stress-test -> select Pareto lead panel
+  generate candidates -> score all candidates -> map the landscape -> diagnose failures -> optimize/rescue -> rescore -> stress-test -> classify candidates -> select leads
 ```
 
 ## Core definition
@@ -82,11 +82,20 @@ Elite refinement          Near-pass rescue          G-Rescue
                     APEX rescoring
                                  |
                                  v
-                    Local robustness testing
+                    Independent candidate labels
+                                 |
+          +----------------------+----------------------+
+          |                      |                      |
+          v                      v                      v
+   Elite candidates       Pareto candidates      Potent specialists
+          |                      |                      |
+          +----------------------+----------------------+
                                  |
                                  v
-                    Pareto final lead panel
+                    Lead candidates for synthesis
 ```
+
+Elite, Pareto, and potent-specialist status are independent labels. A candidate may belong to one, two, or all three groups.
 
 ## Candidate classes
 
@@ -102,6 +111,51 @@ V4A classifies generated candidates into design roles:
 | F | Developable candidates | improve activity while preserving clean properties |
 | G | Rescue candidates | diagnose and repair hidden biological structure |
 | G5 | True junk | discard |
+
+## Independent candidate labels
+
+The final selector writes the following Boolean labels to every sanity-filtered candidate:
+
+```python
+df["is_potent_any_organism"] = (
+    df["APEX_best_MIC"] < 5
+)
+
+df["is_narrow_spectrum_specialist"] = (
+    (df["APEX_best_MIC"] < 5)
+    & (df["fraction_MIC_le_64"] <= 0.35)
+)
+
+df["is_broad_spectrum"] = (
+    df["fraction_MIC_le_64"] >= 0.70
+)
+```
+
+Interpretation:
+
+- `is_potent_any_organism`: predicted MIC below 5 against at least one organism.
+- `is_narrow_spectrum_specialist`: predicted MIC below 5 against at least one organism but predicted MIC <=64 against no more than 35% of the panel.
+- `is_broad_spectrum`: predicted MIC <=64 against at least 70% of the panel.
+- `is_elite`: passes absolute potency, breadth, worst-case, and developability thresholds.
+- `is_pareto`: is non-dominated across the V4A multiobjective selection space.
+- `is_elite_pareto`: is both elite and Pareto.
+
+A potent-any candidate is not automatically narrow-spectrum. Broad-spectrum candidates can also have `APEX_best_MIC < 5`.
+
+## Default elite thresholds
+
+The current defaults are configurable from the command line:
+
+```text
+APEX_best_MIC <= 20
+APEX_mean_MIC <= 80
+APEX_median_MIC <= 32
+APEX_worst_MIC <= 512
+fraction_MIC_le_64 >= 0.60
+developability_component >= 0.70
+```
+
+Elite and Pareto remain parallel labels rather than sequential filters.
 
 ## Optimization objectives
 
@@ -123,28 +177,32 @@ V4A optimizes multiple objectives at once:
 
 V4A is not a lowest-MIC-at-all-cost system. It is a robust biological lead-design system.
 
-## Planned output directories
+## Output directories
 
 ```text
 v4/results/
 ├── seed_pool/
 │   ├── v4a_seed_candidates.csv
-│   └── v4a_seed_apex_scored.csv
+│   └── apex_seed_scoring/
 ├── landscape/
-│   ├── candidate_landscape.csv
-│   ├── candidate_clusters.csv
-│   └── candidate_class_assignments.csv
+│   └── candidate_landscape.csv
 ├── rescue/
-│   ├── g_rescue_candidates.csv
 │   ├── g_rescue_variants.csv
 │   └── g_rescue_successes.csv
 ├── optimization/
 │   ├── optimized_variants.csv
-│   └── optimized_variants_apex_scored.csv
+│   ├── optimized_variants_with_gains.csv
+│   └── apex_optimized_scoring/
 ├── robustness/
 │   └── robustness_scores.csv
 └── final_panel/
+    ├── v4a_all_sanity_filtered_candidates.csv
+    ├── v4a_elite_candidates.csv
     ├── v4a_pareto_front.csv
+    ├── v4a_elite_pareto_candidates.csv
+    ├── v4a_potent_any_organism.csv
+    ├── v4a_narrow_spectrum_specialists.csv
+    ├── v4a_broad_spectrum_candidates.csv
     ├── v4a_top20_panel.csv
     ├── v4a_top50_panel.csv
     └── v4a_top50_panel.fasta
@@ -165,14 +223,4 @@ V5:
 
 ## Current status
 
-V4A is the next planned architecture layer. This folder documents the system design and expected implementation layout.
-
-The immediate implementation target is:
-
-```text
-APEX-only, no DBAASP,
-whole-pool optimization,
-failure-aware G-Rescue,
-robustness scoring,
-Pareto final panel.
-```
+V4A is implemented as an APEX-only, whole-population optimization system with failure-aware G-Rescue, independent Elite/Pareto/spectrum labels, and synthesis-oriented output panels.
