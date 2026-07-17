@@ -1,0 +1,4 @@
+sequence,hemolysis_label,cytotoxicity_label,source,assay_type,assay_endpoint,concentration,unit,cell_type,species,reference
+EXAMPLEPEPTIDE,0,0,example,hemolysis,percent_hemolysis,100,ug_per_ml,erythrocyte,human,replace_me
+EXAMPLEPEPTIDEK,1,,example,hemolysis,percent_hemolysis,100,ug_per_ml,erythrocyte,human,replace_me
+EXAMPLEPEPTIDER,,1,example,cytotoxicity,cell_viability,100,ug_per_ml,epithelial,human,replace_me
