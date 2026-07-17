@@ -71,11 +71,18 @@ def load_latents(path: str | Path, latent_key: str = "auto") -> tuple[np.ndarray
     path = Path(path)
     if not path.exists():
         raise FileNotFoundError(path)
-    npz = np.load(path, allow_pickle=False)
+
+    # Some existing V4B latent archives saved candidate_id from pandas as an
+    # object/string array. NumPy refuses to load those with allow_pickle=False.
+    # These archives are generated locally by this pipeline, so enabling pickle
+    # here is acceptable and lets failed runs resume without regenerating APEX
+    # outputs.
+    npz = np.load(path, allow_pickle=True)
+
     if "candidate_id" not in npz.files:
         raise KeyError(f"Latent archive lacks candidate_id array: {path}")
     key = choose_latent_key(npz, latent_key)
-    ids = npz["candidate_id"].astype(str)
+    ids = np.asarray(npz["candidate_id"]).astype(str)
     z = np.asarray(npz[key], dtype=np.float32)
     if z.ndim != 2:
         raise ValueError(f"Latent array '{key}' must be 2D, got shape {z.shape}")
