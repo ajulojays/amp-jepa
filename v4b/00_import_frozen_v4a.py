@@ -115,14 +115,15 @@ def main() -> None:
         lambda sequence: valid_sequence(sequence, args.min_len, args.max_len)
     )
 
-    rejected = source.loc[~source["sequence_valid"]].copy()
+    invalid = source.loc[~source["sequence_valid"]].copy()
+    invalid["rejection_reason"] = "invalid_sequence"
+
     accepted = source.loc[source["sequence_valid"]].copy()
     duplicate_mask = accepted.duplicated("sequence", keep="first")
     duplicate_rows = int(duplicate_mask.sum())
     duplicates = accepted.loc[duplicate_mask].copy()
-    if not duplicates.empty:
-        duplicates["rejection_reason"] = "duplicate_sequence"
-        rejected = pd.concat([rejected, duplicates], ignore_index=True, sort=False)
+    duplicates["rejection_reason"] = "duplicate_sequence"
+    rejected = pd.concat([invalid, duplicates], ignore_index=True, sort=False)
 
     accepted = accepted.loc[~duplicate_mask].copy()
     accepted.drop(columns=["sequence_valid"], inplace=True)
@@ -144,8 +145,6 @@ def main() -> None:
     outdir.mkdir(parents=True, exist_ok=True)
     accepted.to_csv(candidate_path, index=False)
     if not rejected.empty:
-        if "rejection_reason" not in rejected.columns:
-            rejected["rejection_reason"] = "invalid_sequence"
         rejected.to_csv(rejected_path, index=False)
     elif rejected_path.exists():
         rejected_path.unlink()
@@ -171,7 +170,7 @@ def main() -> None:
             "maximum_length": args.max_len,
             "canonical_amino_acids_only": True,
             "accepted_unique_sequences": int(len(accepted)),
-            "invalid_rows": int((~source["sequence_valid"]).sum()),
+            "invalid_rows": int(len(invalid)),
             "duplicate_rows": duplicate_rows,
             "rejected_rows_total": int(len(rejected)),
         },
