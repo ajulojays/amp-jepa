@@ -53,12 +53,13 @@ def main() -> None:
     args = parser.parse_args()
 
     repo_root = Path(__file__).resolve().parents[1]
-    package_root = repo_root / "v3" / "src"
-    if not package_root.exists():
-        raise FileNotFoundError(f"AMP-JEPA package directory not found: {package_root}")
-    sys.path.insert(0, str(package_root))
+    v3_module_dir = repo_root / "v3"
+    v3_module_path = v3_module_dir / "ampjepa_hybrid_v3.py"
+    if not v3_module_path.exists():
+        raise FileNotFoundError(f"V3 AMP-JEPA module not found: {v3_module_path}")
+    sys.path.insert(0, str(v3_module_dir))
 
-    from ampjepa.model import load_v3_checkpoint, tokenize  # noqa: E402
+    from ampjepa_hybrid_v3 import load_v3_checkpoint, tokenize  # noqa: E402
 
     input_path = Path(args.input)
     checkpoint_path = Path(args.checkpoint)
