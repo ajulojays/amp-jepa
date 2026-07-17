@@ -132,21 +132,46 @@ def _numeric_series(df: pd.DataFrame, col: str) -> pd.Series | None:
     return s
 
 
+def _filled_numeric(df: pd.DataFrame, col: str) -> pd.Series | None:
+    s = _numeric_series(df, col)
+    if s is None:
+        return None
+    return s.fillna(s.median())
+
+
 def infer_fitness(df: pd.DataFrame, explicit_col: str | None = None) -> tuple[np.ndarray, str, str]:
     """Return higher-is-better fitness, source column/expression, and mode.
 
     Priority:
-    1. Explicit user-provided score column.
-    2. Known higher-is-better score/fitness columns.
-    3. Any numeric score/fitness column.
-    4. MIC-like columns converted to negative log1p(MIC), so lower MIC is better.
-    5. V3 pre-APEX score fallback.
+    1. Explicit user-provided score column, assumed higher-is-better.
+    2. APEX MIC composite, where lower MIC is better.
+    3. Known higher-is-better score/fitness columns.
+    4. Any numeric score/fitness column.
+    5. Generic MIC-like columns converted to negative log1p(MIC).
+    6. V3 pre-APEX score fallback.
     """
     if explicit_col:
         s = _numeric_series(df, explicit_col)
         if s is None:
             raise ValueError(f"Explicit fitness column is absent or nonnumeric: {explicit_col}")
         return s.fillna(s.median()).to_numpy(dtype=np.float32), explicit_col, "explicit_higher_is_better"
+
+    apex_median = _filled_numeric(df, "APEX_median_MIC")
+    if apex_median is not None:
+        score = -np.log1p(apex_median.clip(lower=0).to_numpy(dtype=np.float32))
+        sources = ["APEX_median_MIC"]
+
+        apex_worst = _filled_numeric(df, "APEX_worst_MIC")
+        if apex_worst is not None:
+            score = score + 0.35 * (-np.log1p(apex_worst.clip(lower=0).to_numpy(dtype=np.float32)))
+            sources.append("APEX_worst_MIC")
+
+        org64 = _filled_numeric(df, "organisms_MIC_le_64")
+        if org64 is not None:
+            score = score + 0.25 * normalized(org64.to_numpy(dtype=np.float32))
+            sources.append("organisms_MIC_le_64")
+
+        return score.astype(np.float32), "+".join(sources), "apex_mic_composite_lower_is_better"
 
     high_priority = [
         "v4b_survival_score",
@@ -158,8 +183,6 @@ def infer_fitness(df: pd.DataFrame, explicit_col: str | None = None) -> tuple[np
         "composite_score",
         "fitness",
         "score",
-        "v3_rank_score_pre_apex",
-        "v3_rank_score",
     ]
     for col in high_priority:
         s = _numeric_series(df, col)
@@ -197,6 +220,11 @@ def infer_fitness(df: pd.DataFrame, explicit_col: str | None = None) -> tuple[np
         mic = mic.fillna(mic.median()).clip(lower=0)
         score = -np.log1p(mic.to_numpy(dtype=np.float32))
         return score.astype(np.float32), "+".join(mic_cols), "mic_lower_is_better"
+
+    for col in ["v3_rank_score_pre_apex", "v3_rank_score"]:
+        s = _numeric_series(df, col)
+        if s is not None:
+            return s.fillna(s.median()).to_numpy(dtype=np.float32), col, "pre_apex_fallback_higher_is_better"
 
     raise ValueError(
         "Could not infer a fitness column. Provide --fitness-column or include an APEX score/MIC column."
