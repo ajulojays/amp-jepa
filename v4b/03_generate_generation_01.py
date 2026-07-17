@@ -7,6 +7,7 @@ import argparse
 import hashlib
 import importlib.util
 import json
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -23,6 +24,7 @@ def load_v3_module(repo_root: Path):
     if spec is None or spec.loader is None:
         raise ImportError(f"Could not load module specification: {module_path}")
     module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
 
