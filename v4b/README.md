@@ -18,39 +18,35 @@ Update the latent manifold
 Generate again
 ```
 
-V4B adds safety-aware multiobjective design:
+V4B runs for ten generations and optimizes:
 
 - APEX-predicted organism-specific MIC
-- overall, Gram-negative, and Gram-positive potency/breadth
-- hemolysis prediction
-- cytotoxicity prediction
+- overall, Gram-negative and Gram-positive potency/breadth
 - sequence novelty
 - developability
 - local robustness
+- latent and sequence diversity
 - Elite and Pareto status
 - potent-any-organism and spectrum labels
 
+Hemolysis and cytotoxicity are excluded from manifold evolution. They will be applied only to the final shortlisted panel before synthesis.
+
 ## Scientific definition
 
-> AMP-JEPA-Hybrid V4B is an iterative latent-manifold optimization system that learns from its own optimized descendants while jointly balancing predicted antimicrobial activity, hemolysis, cytotoxicity, breadth, novelty, developability, and robustness.
+> AMP-JEPA-Hybrid V4B is a ten-generation latent-manifold evolution system that learns from optimized descendants while balancing predicted antimicrobial activity, spectrum, novelty, developability, robustness and diversity.
 
-V4B does not replace V4A. V4A is the frozen baseline and candidate archive. V4B starts from the V4A candidate pool and optimization history.
+V4A remains the frozen baseline and Generation 0 archive.
 
-## Data policy
-
-For now, activity remains APEX-guided. Hemolysis and cytotoxicity predictors must be treated as separate prediction modules with model provenance recorded. Missing safety labels must remain missing; they must not be silently interpreted as safe.
-
-## V4B generations
-
-Each iteration is a generation:
+## Generations
 
 ```text
-Generation 0: frozen V4A seeds, optimized variants, Elite/Pareto candidates
+Generation 0: frozen V4A seeds and optimized variants
 Generation 1: re-encoded V4A descendants and newly decoded peptides
-Generation 2+: descendants selected from multiobjective safety/activity fitness
+Generation 2–9: activity-guided descendant populations
+Generation 10: final evolved computational population
 ```
 
-Every generated sequence must retain:
+Every sequence retains:
 
 - generation number
 - parent sequence and parent ID
@@ -58,13 +54,13 @@ Every generated sequence must retain:
 - latent vector ID
 - optimization operator
 - activity predictions
-- safety predictions
-- novelty/developability metrics
-- Elite/Pareto/specialist labels
+- novelty and developability metrics
+- robustness metrics
+- Elite, Pareto and specialist labels
 
 ## Candidate taxonomy
 
-Elite, Pareto, and potent-specialist labels remain independent.
+Elite, Pareto and specialist labels remain independent.
 
 ```text
                     V4B descendants
@@ -75,35 +71,33 @@ Elite, Pareto, and potent-specialist labels remain independent.
         │                  │                  │
         └──────────────────┼──────────────────┘
                            ↓
-             safety-qualified lead panel
+               diverse final lead panel
 ```
 
-A candidate can be Elite only, Pareto only, specialist only, or any intersection.
+## Final validation before synthesis
 
-## Safety-aware lead principle
-
-A peptide is not called safety-qualified merely because safety predictions are missing. A lead requires explicit model outputs or experimentally measured values for the safety criteria being claimed.
+After Generation 10, a small structurally diverse lead panel will undergo separate validation for hemolysis, cytotoxicity, stability, solubility, aggregation and experimental MIC. These endpoints are final selection gates rather than V4B optimization objectives.
 
 ## Planned modules
 
 ```text
 v4b/
 ├── README.md
+├── WORKFLOW.md
 ├── V4B_ARCHITECTURE.md
-├── V4B_IMPLEMENTATION_PLAN.md
-├── configs/v4b_apex_safety.yaml
+├── configs/v4b_apex.yaml
 ├── 00_import_frozen_v4a.py
 ├── 01_encode_v4a_descendants.py
-├── 02_fit_activity_safety_surrogates.py
+├── 02_fit_activity_surrogate.py
 ├── 03_update_latent_manifold.py
 ├── 04_generate_next_generation.py
 ├── 05_score_activity.py
-├── 06_score_hemolysis_toxicity.py
-├── 07_select_multitask_elite_pareto.py
+├── 06_score_design_quality.py
+├── 07_select_elite_pareto.py
 ├── 08_build_next_generation.py
 └── run_v4b_generation.sh
 ```
 
 ## Current status
 
-Architecture and implementation plan are now defined. The next engineering step is to implement Generation 0 import and latent re-encoding using the frozen V4A candidates and the V3 encoder checkpoint.
+The V4A archive is frozen. The next engineering step is Generation 0 import and latent re-encoding using the frozen V4A candidates and V3 encoder checkpoint.
