@@ -1,0 +1,81 @@
+version: V4B
+baseline:
+  v4a_results_root: v4/results
+  v4a_candidate_table: v4/results/final_panel/v4a_candidate_groups_all.csv
+  v3_checkpoint: v3/checkpoints/amp_jepa_hybrid_v3_qc_core.pt
+  qc_core_corpus: v3/data/processed/peptide_corpus_v3_qc_core.csv
+
+generation:
+  total_generations: 10
+  generation_id: 1
+  parent_pool_size: 2000
+  decoded_candidates: 20000
+  random_exploration_fraction: 0.20
+  elite_parent_fraction: 0.30
+  pareto_parent_fraction: 0.25
+  elite_pareto_parent_fraction: 0.20
+  potent_specialist_fraction: 0.10
+  g_rescue_fraction: 0.10
+  random_v4a_fraction: 0.05
+  max_parent_family_fraction: 0.02
+
+latent:
+  strategy: weighted_neighborhood_resampling
+  perturbation_scales: [0.10, 0.20, 0.35, 0.50]
+  samples_per_parent: 10
+  replay_qc_core_fraction: 0.25
+  replay_v4a_fraction: 0.25
+
+activity:
+  scorer: APEX
+  apex_root: /home/julojays/apex
+  batch_size: 32
+  min_batch_size: 4
+  potent_any_max_best_mic: 5.0
+  narrow_max_fraction_mic_le64: 0.35
+  broad_min_fraction_mic_le64: 0.70
+
+elite:
+  max_best_mic: 20.0
+  max_mean_mic: 80.0
+  max_median_mic: 32.0
+  max_worst_mic: 512.0
+  min_fraction_mic_le64: 0.60
+  min_developability: 0.70
+
+pareto:
+  minimize:
+    - APEX_median_MIC
+    - APEX_mean_MIC
+    - APEX_worst_MIC
+    - max_train_identity
+  maximize:
+    - fraction_MIC_le_64
+    - novelty_score
+    - developability_component
+    - local_robustness_score
+    - latent_diversity_score
+
+selection:
+  preserve_sequence_clusters: true
+  preserve_latent_clusters: true
+  preserve_specialists: true
+  preserve_g_rescue_lineages: true
+  novelty_floor: 0.20
+
+final_validation:
+  stage: after_generation_10
+  excluded_from_training_objective: true
+  endpoints:
+    - hemolysis
+    - mammalian_cell_cytotoxicity
+    - serum_plasma_stability
+    - protease_stability
+    - solubility
+    - aggregation
+    - experimental_mic
+
+outputs:
+  root: v4b/results
+  archive_each_generation: true
+  overwrite_existing_generation: false
