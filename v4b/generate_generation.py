@@ -7,6 +7,7 @@ import argparse
 import hashlib
 import importlib.util
 import json
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -20,10 +21,13 @@ def load_v3_module(repo_root: Path):
     module_path = repo_root / "v3" / "ampjepa_hybrid_v3.py"
     if not module_path.exists():
         raise FileNotFoundError(f"V3 module not found: {module_path}")
-    spec = importlib.util.spec_from_file_location("ampjepa_hybrid_v3", module_path)
+    module_name = "ampjepa_hybrid_v3"
+    spec = importlib.util.spec_from_file_location(module_name, module_path)
     if spec is None or spec.loader is None:
         raise ImportError(f"Could not load module specification: {module_path}")
     module = importlib.util.module_from_spec(spec)
+    # Required for dataclasses: @dataclass resolves cls.__module__ through sys.modules.
+    sys.modules[module_name] = module
     spec.loader.exec_module(module)
     return module
 
