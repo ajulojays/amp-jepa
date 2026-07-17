@@ -28,6 +28,13 @@ BOOLEAN_COLUMNS = [
     "is_narrow_spectrum_specialist",
     "is_broad_spectrum",
 ]
+V4B_RESERVED_COLUMNS = [
+    "candidate_id",
+    "generation",
+    "parent_candidate_id",
+    "lineage_depth",
+    "v4b_source",
+]
 
 
 def sha256_file(path: Path, chunk_size: int = 1024 * 1024) -> str:
@@ -64,6 +71,27 @@ def normalize_boolean(series: pd.Series) -> pd.Series:
         .map(lambda value: str(value).strip().lower() in true_values)
         .astype(bool)
     )
+
+
+def preserve_reserved_source_columns(df: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, str]]:
+    """Preserve source metadata that collides with V4B-owned column names."""
+    out = df.copy()
+    renamed: dict[str, str] = {}
+
+    for column in V4B_RESERVED_COLUMNS:
+        if column not in out.columns:
+            continue
+
+        target = f"v4a_{column}"
+        suffix = 1
+        while target in out.columns:
+            target = f"v4a_{column}_{suffix}"
+            suffix += 1
+
+        out.rename(columns={column: target}, inplace=True)
+        renamed[column] = target
+
+    return out, renamed
 
 
 def main() -> None:
@@ -108,7 +136,7 @@ def main() -> None:
         raise ValueError("The V4A table must contain a 'sequence' column.")
 
     source_rows = len(source)
-    source = source.copy()
+    source, renamed_source_columns = preserve_reserved_source_columns(source)
     source["sequence_original"] = source["sequence"].astype(str)
     source["sequence"] = source["sequence"].map(clean_sequence)
     source["sequence_valid"] = source["sequence"].map(
@@ -155,7 +183,7 @@ def main() -> None:
         if column in accepted.columns
     }
     manifest = {
-        "schema_version": "1.0",
+        "schema_version": "1.1",
         "v4b_stage": "generation_00_import",
         "generation": 0,
         "created_utc": datetime.now(timezone.utc).isoformat(),
@@ -164,6 +192,7 @@ def main() -> None:
             "path": str(input_path),
             "sha256": sha256_file(input_path),
             "rows": int(source_rows),
+            "renamed_reserved_columns": renamed_source_columns,
         },
         "validation": {
             "minimum_length": args.min_len,
