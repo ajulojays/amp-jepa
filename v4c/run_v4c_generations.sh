@@ -20,6 +20,7 @@ LATENT_SIGMA_START="${LATENT_SIGMA_START:-0.35}"
 LATENT_SIGMA_END="${LATENT_SIGMA_END:-0.15}"
 TEMPERATURE_START="${TEMPERATURE_START:-0.85}"
 TEMPERATURE_END="${TEMPERATURE_END:-0.65}"
+REST_BETWEEN_GENERATIONS_SECONDS="${REST_BETWEEN_GENERATIONS_SECONDS:-60}"
 BASE_SEED="${BASE_SEED:-20260716}"
 CHECKPOINT="${CHECKPOINT:-v3/checkpoints/amp_jepa_hybrid_v3_qc_core.pt}"
 RESULTS_ROOT="${RESULTS_ROOT:-v4c/results}"
@@ -39,6 +40,10 @@ if (( END_GENERATION > 10 )); then
 fi
 if (( N_OFFSPRING < 1 || N_PARENTS < 1 || N_SURVIVORS < 1 )); then
   echo "[V4C] Population counts must be positive." >&2
+  exit 2
+fi
+if ! [[ "$REST_BETWEEN_GENERATIONS_SECONDS" =~ ^[0-9]+$ ]]; then
+  echo "[V4C] REST_BETWEEN_GENERATIONS_SECONDS must be a non-negative integer." >&2
   exit 2
 fi
 if [[ ! -f "$CHECKPOINT" ]]; then
@@ -79,6 +84,7 @@ Generations:             $START_GENERATION -> $END_GENERATION
 Parents/generation:      $N_PARENTS
 Offspring/generation:    $N_OFFSPRING
 Survivors/generation:    $N_SURVIVORS
+Rest between generations: ${REST_BETWEEN_GENERATIONS_SECONDS}s
 Requested in this run:   $REQUESTED_TOTAL
 Device:                  $DEVICE
 Checkpoint:              $CHECKPOINT
@@ -261,6 +267,13 @@ PY
 
   date -u +"%Y-%m-%dT%H:%M:%SZ" > "$COMPLETE_MARKER"
   echo "[V4C:G${GEN_PAD}] Complete"
+
+  if (( GEN < END_GENERATION && REST_BETWEEN_GENERATIONS_SECONDS > 0 )); then
+    NEXT_GEN=$((GEN + 1))
+    NEXT_PAD=$(printf "%02d" "$NEXT_GEN")
+    echo "[V4C:G${GEN_PAD}] Resting ${REST_BETWEEN_GENERATIONS_SECONDS}s before Generation ${NEXT_PAD}"
+    sleep "$REST_BETWEEN_GENERATIONS_SECONDS"
+  fi
 done
 
 python - "$RESULTS_ROOT" "$END_GENERATION" "$N_OFFSPRING" <<'PY'
