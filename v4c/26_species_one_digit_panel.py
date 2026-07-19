@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 """Create a species-specific one-digit predicted-MIC panel for V4C.
 
-The script matches APEX organism/strain columns with a user-supplied regex,
-ranks peptides by one-digit coverage and potency, exports candidate/strain/overlap
-summaries, and creates both complete and top-N heatmaps. All MIC values remain
-computational predictions.
+The species regex is matched against both raw APEX model names and canonical species
+labels, so a query such as ``Escherichia coli`` correctly selects abbreviated columns
+such as ``E. coli ATCC11775``. All MIC values remain computational predictions.
 """
 
 from __future__ import annotations
@@ -19,58 +18,47 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-SUMMARY_PREFIXES = (
-    "APEX_", "mean_", "median_", "min_", "max_", "organisms_",
-    "fraction_", "n_pathogens_", "criteria_", "score_", "rank_",
-    "v4c_", "audit_", "self_", "broad_", "qc_", "layer1_",
-)
-
-FIXED_METADATA = {
-    "candidate_id", "apex_candidate_id", "sequence", "sequence_clean",
-    "generation", "generation_source", "lead_tier", "record_type",
-    "parent_candidate_id", "second_parent_candidate_id", "generation_operator",
-    "parent_selection_stratum", "hydrophobicity_zone", "ranking_note",
-    "length", "sequence_length", "net_charge_KR_minus_DE",
-    "hydrophobic_fraction", "proposal_index", "lineage_depth",
-    "latent_sigma", "decode_temperature", "APEX_rank",
-    "dual_novelty_pass", "median_MIC_le_32", "self_similarity_status",
-}
+from apex_model_catalog import infer_species_label, match_species_columns
 
 
 def parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument(
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
         "--input",
         default=(
             "v4c/results/final_funnel/04_self_nonredundant_cdhit75/"
             "v4c_novel_MIC32_self_nonredundant_cdhit75.csv"
         ),
     )
-    p.add_argument("--species-regex", required=True)
-    p.add_argument("--species-label", default=None)
-    p.add_argument("--output-dir", required=True)
-    p.add_argument("--cutoff", type=float, default=10.0)
-    p.add_argument("--heatmap-top-n", type=int, default=100)
-    p.add_argument("--label-top-n", type=int, default=100)
-    return p.parse_args()
+    parser.add_argument("--species-regex", required=True)
+    parser.add_argument("--species-label", default=None)
+    parser.add_argument("--output-dir", required=True)
+    parser.add_argument("--cutoff", type=float, default=10.0)
+    parser.add_argument("--heatmap-top-n", type=int, default=100)
+    parser.add_argument("--label-top-n", type=int, default=100)
+    parser.add_argument("--minimum-numeric-fraction", type=float, default=0.95)
+    return parser.parse_args()
 
 
 def safe_slug(text: str) -> str:
     return re.sub(r"[^A-Za-z0-9]+", "_", text).strip("_").lower() or "species"
 
 
-def is_metadata_or_summary(column: str) -> bool:
-    return column in FIXED_METADATA or column.startswith(SUMMARY_PREFIXES)
-
-
-def save_heatmap(matrix: pd.DataFrame, path_stem: Path, title: str, label_top_n: int) -> None:
+def save_heatmap(
+    matrix: pd.DataFrame,
+    path_stem: Path,
+    title: str,
+    label_top_n: int,
+) -> None:
     if matrix.empty:
         return
+
     values = matrix.to_numpy(dtype=float)
     log_values = np.log2(np.clip(values, 1e-6, None))
     n_rows, n_cols = matrix.shape
     fig_width = max(7.5, n_cols * 2.0)
     fig_height = max(6.0, min(35.0, n_rows * 0.22 + 2.5))
+
     fig, ax = plt.subplots(figsize=(fig_width, fig_height))
     image = ax.imshow(log_values, aspect="auto", interpolation="nearest")
     ax.set_xticks(np.arange(n_cols))
@@ -81,7 +69,7 @@ def save_heatmap(matrix: pd.DataFrame, path_stem: Path, title: str, label_top_n:
     else:
         ticks = np.unique(np.linspace(0, n_rows - 1, label_top_n, dtype=int))
     ax.set_yticks(ticks)
-    ax.set_yticklabels([matrix.index[i] for i in ticks], fontsize=6)
+    ax.set_yticklabels([matrix.index[index] for index in ticks], fontsize=6)
     ax.set_xlabel("Matched species strain/model")
     ax.set_ylabel("V4C candidate")
     ax.set_title(title)
@@ -108,25 +96,29 @@ def main() -> None:
     if df["candidate_id"].duplicated().any():
         raise ValueError("Input contains duplicate candidate IDs.")
 
-    pattern = re.compile(args.species_regex, flags=re.IGNORECASE)
-    species_columns = [
-        column for column in df.columns
-        if pattern.search(str(column)) and not is_metadata_or_summary(str(column))
-    ]
+    species_columns, excluded_numeric = match_species_columns(
+        df,
+        args.species_regex,
+        minimum_numeric_fraction=args.minimum_numeric_fraction,
+    )
     if not species_columns:
         raise ValueError(
-            f"No APEX model columns matched --species-regex {args.species_regex!r}."
+            f"No recognized APEX model columns matched raw or canonical species "
+            f"regex {args.species_regex!r}."
         )
 
     for column in species_columns:
         df[column] = pd.to_numeric(df[column], errors="coerce")
-        if df[column].notna().mean() < 0.95:
+        if df[column].notna().mean() < args.minimum_numeric_fraction:
             raise ValueError(
                 f"Matched column {column!r} is not sufficiently numeric to be an MIC model."
             )
 
-    label = args.species_label or args.species_regex
+    label = args.species_label or infer_species_label(species_columns[0])
+    if label == "Unresolved":
+        label = args.species_regex
     slug = safe_slug(label)
+
     mic = df.set_index("candidate_id")[species_columns]
     tested = mic.notna().sum(axis=1)
     below = mic.lt(args.cutoff)
@@ -140,7 +132,9 @@ def main() -> None:
     metrics["best_species_MIC"] = mic.min(axis=1)
     metrics["median_species_MIC"] = mic.median(axis=1)
     metrics["worst_species_MIC"] = mic.max(axis=1)
-    metrics["one_digit_any_species_model"] = metrics["n_species_models_MIC_lt_10"].ge(1)
+    metrics["one_digit_any_species_model"] = metrics[
+        "n_species_models_MIC_lt_10"
+    ].ge(1)
     metrics["one_digit_all_species_models"] = (
         tested.gt(0) & metrics["n_species_models_MIC_lt_10"].eq(tested)
     )
@@ -155,81 +149,113 @@ def main() -> None:
     ]
     candidate_summary = (
         metrics.reset_index()
-        .merge(df[metadata_columns].drop_duplicates("candidate_id"), on="candidate_id", how="left")
-    )
-    candidate_summary = candidate_summary.sort_values(
-        [
-            "n_species_models_MIC_lt_10", "fraction_species_models_MIC_lt_10",
-            "median_species_MIC", "worst_species_MIC", "best_species_MIC",
-        ],
-        ascending=[False, False, True, True, True],
-    ).reset_index(drop=True)
-    candidate_summary["species_panel_rank"] = np.arange(1, len(candidate_summary) + 1)
-
-    qualifying = candidate_summary[candidate_summary["one_digit_any_species_model"]].copy()
-    qualifying_ids = qualifying["candidate_id"].tolist()
-    qualifying_full = (
-        qualifying.merge(
-            df[["candidate_id"] + species_columns].drop_duplicates("candidate_id"),
+        .merge(
+            df[metadata_columns].drop_duplicates("candidate_id"),
             on="candidate_id",
             how="left",
         )
     )
+    candidate_summary = candidate_summary.sort_values(
+        [
+            "n_species_models_MIC_lt_10",
+            "fraction_species_models_MIC_lt_10",
+            "median_species_MIC",
+            "worst_species_MIC",
+            "best_species_MIC",
+        ],
+        ascending=[False, False, True, True, True],
+    ).reset_index(drop=True)
+    candidate_summary["species_panel_rank"] = np.arange(
+        1, len(candidate_summary) + 1
+    )
 
-    strain_rows = []
+    qualifying = candidate_summary[
+        candidate_summary["one_digit_any_species_model"]
+    ].copy()
+    qualifying_ids = qualifying["candidate_id"].tolist()
+    qualifying_full = qualifying.merge(
+        df[["candidate_id"] + species_columns].drop_duplicates("candidate_id"),
+        on="candidate_id",
+        how="left",
+    )
+
+    model_rows = []
     for column in species_columns:
         values = mic[column].dropna()
         count = int(values.lt(args.cutoff).sum())
-        strain_rows.append(
+        model_rows.append(
             {
                 "species_model": column,
+                "canonical_species": infer_species_label(column),
                 "n_candidates_tested": int(len(values)),
                 "n_candidates_MIC_lt_10": count,
-                "percentage_candidates_MIC_lt_10": 100.0 * count / max(len(values), 1),
+                "percentage_candidates_MIC_lt_10": (
+                    100.0 * count / max(len(values), 1)
+                ),
                 "best_predicted_MIC": float(values.min()),
                 "median_predicted_MIC": float(values.median()),
                 "worst_predicted_MIC": float(values.max()),
             }
         )
-    strain_summary = pd.DataFrame(strain_rows).sort_values(
+    model_summary = pd.DataFrame(model_rows).sort_values(
         ["n_candidates_MIC_lt_10", "median_predicted_MIC"],
         ascending=[False, True],
     )
 
     overlap_rows = []
-    for k in range(1, len(species_columns) + 1):
-        count = int(metrics["n_species_models_MIC_lt_10"].ge(k).sum())
+    for count_models in range(1, len(species_columns) + 1):
+        count = int(metrics["n_species_models_MIC_lt_10"].ge(count_models).sum())
         overlap_rows.append(
             {
-                "criterion": f"predicted MIC < {args.cutoff:g} µM against at least {k} matched model(s)",
+                "criterion": (
+                    f"predicted MIC < {args.cutoff:g} µM against at least "
+                    f"{count_models} matched model(s)"
+                ),
                 "n_candidates": count,
                 "percentage_portfolio": 100.0 * count / len(df),
             }
         )
     overlap_rows.append(
         {
-            "criterion": f"predicted MIC < {args.cutoff:g} µM against all matched models",
+            "criterion": (
+                f"predicted MIC < {args.cutoff:g} µM against all matched models"
+            ),
             "n_candidates": int(metrics["one_digit_all_species_models"].sum()),
-            "percentage_portfolio": 100.0 * metrics["one_digit_all_species_models"].sum() / len(df),
+            "percentage_portfolio": (
+                100.0 * metrics["one_digit_all_species_models"].sum() / len(df)
+            ),
         }
     )
     overlap_summary = pd.DataFrame(overlap_rows)
 
-    candidate_summary.to_csv(output_dir / f"{slug}_all_candidate_summary.csv", index=False)
-    qualifying_full.to_csv(output_dir / f"{slug}_one_digit_candidates.csv", index=False)
-    strain_summary.to_csv(output_dir / f"{slug}_model_summary.csv", index=False)
-    overlap_summary.to_csv(output_dir / f"{slug}_overlap_summary.csv", index=False)
+    candidate_summary.to_csv(
+        output_dir / f"{slug}_all_candidate_summary.csv", index=False
+    )
+    qualifying_full.to_csv(
+        output_dir / f"{slug}_one_digit_candidates.csv", index=False
+    )
+    model_summary.to_csv(
+        output_dir / f"{slug}_model_summary.csv", index=False
+    )
+    overlap_summary.to_csv(
+        output_dir / f"{slug}_overlap_summary.csv", index=False
+    )
 
     full_matrix = mic.reindex(index=qualifying_ids, columns=species_columns)
     full_matrix.to_csv(output_dir / f"{slug}_one_digit_heatmap_matrix_all.csv")
     top_n = min(args.heatmap_top_n, len(full_matrix))
     top_matrix = full_matrix.head(top_n)
-    top_matrix.to_csv(output_dir / f"{slug}_one_digit_heatmap_matrix_top{top_n}.csv")
+    top_matrix.to_csv(
+        output_dir / f"{slug}_one_digit_heatmap_matrix_top{top_n}.csv"
+    )
 
     save_heatmap(
         full_matrix,
         output_dir / f"01_{slug}_one_digit_heatmap_all",
-        f"{label}: candidates with predicted MIC < {args.cutoff:g} µM against at least one model (n={len(full_matrix)})",
+        (
+            f"{label}: candidates with predicted MIC < {args.cutoff:g} µM "
+            f"against at least one model (n={len(full_matrix)})"
+        ),
         args.label_top_n,
     )
     save_heatmap(
@@ -240,7 +266,7 @@ def main() -> None:
     )
 
     summary = {
-        "schema_version": "1.0",
+        "schema_version": "1.1",
         "created_utc": datetime.now(timezone.utc).isoformat(),
         "experiment": "AMP-JEPA-Hybrid V4C",
         "stage": "species_specific_one_digit_predicted_MIC_panel",
@@ -248,30 +274,45 @@ def main() -> None:
         "species_regex": args.species_regex,
         "species_label": label,
         "matched_model_columns": species_columns,
+        "canonical_species_labels": sorted(
+            {infer_species_label(column) for column in species_columns}
+        ),
+        "excluded_numeric_nonmodel_columns": excluded_numeric,
         "n_portfolio_candidates": int(len(df)),
         "n_matched_models": int(len(species_columns)),
         "one_digit_definition": f"predicted MIC < {args.cutoff:g} µM",
         "n_candidates_one_digit_any_model": int(len(qualifying)),
-        "percentage_candidates_one_digit_any_model": float(100.0 * len(qualifying) / len(df)),
-        "n_candidates_one_digit_all_models": int(metrics["one_digit_all_species_models"].sum()),
+        "percentage_candidates_one_digit_any_model": float(
+            100.0 * len(qualifying) / len(df)
+        ),
+        "n_candidates_one_digit_all_models": int(
+            metrics["one_digit_all_species_models"].sum()
+        ),
         "best_predicted_species_MIC": float(mic.min().min()),
         "best_candidate_by_species_breadth": (
-            str(qualifying.iloc[0]["candidate_id"]) if len(qualifying) else None
+            str(qualifying.iloc[0]["candidate_id"])
+            if len(qualifying) else None
         ),
         "outputs": {
-            "all_candidate_summary": str(output_dir / f"{slug}_all_candidate_summary.csv"),
-            "one_digit_candidates": str(output_dir / f"{slug}_one_digit_candidates.csv"),
+            "all_candidate_summary": str(
+                output_dir / f"{slug}_all_candidate_summary.csv"
+            ),
+            "one_digit_candidates": str(
+                output_dir / f"{slug}_one_digit_candidates.csv"
+            ),
             "model_summary": str(output_dir / f"{slug}_model_summary.csv"),
             "overlap_summary": str(output_dir / f"{slug}_overlap_summary.csv"),
         },
     }
-    with (output_dir / f"{slug}_analysis_summary.json").open("w", encoding="utf-8") as handle:
+    with (output_dir / f"{slug}_analysis_summary.json").open(
+        "w", encoding="utf-8"
+    ) as handle:
         json.dump(summary, handle, indent=2)
 
     print("\nV4C SPECIES-SPECIFIC ONE-DIGIT SUMMARY")
     print(json.dumps(summary, indent=2))
     print("\nMATCHED MODEL SUMMARY")
-    print(strain_summary.round(3).to_string(index=False))
+    print(model_summary.round(3).to_string(index=False))
     print("\nOVERLAP SUMMARY")
     print(overlap_summary.round(3).to_string(index=False))
 
