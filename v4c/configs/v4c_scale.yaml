@@ -1,0 +1,58 @@
+version: V4C
+experiment:
+  name: million_peptide_scale_up
+  baseline: V4B
+  scientific_question: >-
+    Does a ten-fold increase in evolutionary search scale improve predicted
+    potency, pathogen breadth, novelty and nonredundant portfolio yield when
+    the V4B model and selection criteria are held fixed?
+
+generation:
+  total_generations: 10
+  offspring_per_generation: 100000
+  maximum_total_generated: 1000000
+  parent_pool_size: 512
+  survivor_pool_size: 2500
+  proposal_multiplier: 4.0
+  crossover_rate: 0.20
+  latent_sigma_start: 0.35
+  latent_sigma_end: 0.15
+  decode_temperature_start: 0.85
+  decode_temperature_end: 0.65
+  seed: 20260716
+
+model:
+  checkpoint: v3/checkpoints/amp_jepa_hybrid_v3_qc_core.pt
+  candidate_prefix: V4C
+  device: cuda
+  generation_batch_size: 512
+  encoding_batch_size: 256
+
+sequence_guardrails:
+  canonical_amino_acids_only: true
+  min_length: 10
+  max_length: 40
+  min_net_charge_KR_minus_DE: 2
+  max_net_charge_KR_minus_DE: 12
+  min_hydrophobic_fraction: 0.20
+  max_hydrophobic_fraction: 0.70
+
+activity:
+  scorer: APEX
+  pathogen_models_expected: 34
+  units: micromol_per_liter
+  display_units: µM
+  predicted_values_only: true
+
+final_filters:
+  maximum_median_predicted_MIC: 32.0
+  curated_corpus_max_identity_exclusive: 0.75
+  qc_corpus_max_identity_exclusive: 0.75
+  self_similarity_max_identity_exclusive: 0.75
+  one_digit_species_MIC_exclusive: 10.0
+
+outputs:
+  root: v4c/results
+  archive_each_generation: true
+  overwrite_existing_generation: false
+  final_comparison_baseline: v4b/results
