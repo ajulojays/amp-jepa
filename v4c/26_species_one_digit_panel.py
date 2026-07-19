@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Create a species-specific one-digit predicted-MIC panel for V4C.
 
-The species regex is matched against both raw APEX model names and canonical species
-labels, so a query such as ``Escherichia coli`` correctly selects abbreviated columns
-such as ``E. coli ATCC11775``. All MIC values remain computational predictions.
+Species are resolved only from the 34 organism/strain variables present in the frozen
+APEX matrix. A canonical full species name is preferred, while the abbreviated source
+name remains accepted for compatibility. All MIC values are computational predictions.
 """
 
 from __future__ import annotations
@@ -18,7 +18,12 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from apex_model_catalog import infer_species_label, match_species_columns
+from apex_model_catalog import (
+    available_species,
+    infer_species_label,
+    match_species_columns,
+    normalize_species_query,
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -30,7 +35,18 @@ def parse_args() -> argparse.Namespace:
             "v4c_novel_MIC32_self_nonredundant_cdhit75.csv"
         ),
     )
-    parser.add_argument("--species-regex", required=True)
+    species_group = parser.add_mutually_exclusive_group(required=True)
+    species_group.add_argument(
+        "--species",
+        help=(
+            "Canonical species name, for example 'Escherichia coli'. "
+            "Abbreviations such as 'E. coli' are also accepted."
+        ),
+    )
+    species_group.add_argument(
+        "--species-regex",
+        help="Backward-compatible raw/canonical species regular expression.",
+    )
     parser.add_argument("--species-label", default=None)
     parser.add_argument("--output-dir", required=True)
     parser.add_argument("--cutoff", type=float, default=10.0)
@@ -96,27 +112,41 @@ def main() -> None:
     if df["candidate_id"].duplicated().any():
         raise ValueError("Input contains duplicate candidate IDs.")
 
+    query = args.species if args.species is not None else args.species_regex
+    assert query is not None
     species_columns, excluded_numeric = match_species_columns(
         df,
-        args.species_regex,
+        query,
         minimum_numeric_fraction=args.minimum_numeric_fraction,
     )
     if not species_columns:
+        choices = "\n  - ".join(
+            available_species(
+                df,
+                minimum_numeric_fraction=args.minimum_numeric_fraction,
+            )
+        )
         raise ValueError(
-            f"No recognized APEX model columns matched raw or canonical species "
-            f"regex {args.species_regex!r}."
+            f"No frozen APEX organism/strain variables matched species query {query!r}.\n"
+            f"Available canonical species:\n  - {choices}"
         )
 
     for column in species_columns:
         df[column] = pd.to_numeric(df[column], errors="coerce")
         if df[column].notna().mean() < args.minimum_numeric_fraction:
             raise ValueError(
-                f"Matched column {column!r} is not sufficiently numeric to be an MIC model."
+                f"Matched column {column!r} is not sufficiently numeric to be an MIC variable."
             )
 
-    label = args.species_label or infer_species_label(species_columns[0])
-    if label == "Unresolved":
-        label = args.species_regex
+    canonical_labels = sorted({infer_species_label(column) for column in species_columns})
+    if len(canonical_labels) != 1:
+        raise ValueError(
+            "Species query matched more than one canonical species: "
+            + " | ".join(canonical_labels)
+        )
+
+    canonical_species = canonical_labels[0]
+    label = args.species_label or canonical_species
     slug = safe_slug(label)
 
     mic = df.set_index("candidate_id")[species_columns]
@@ -186,7 +216,7 @@ def main() -> None:
         model_rows.append(
             {
                 "species_model": column,
-                "canonical_species": infer_species_label(column),
+                "canonical_species": canonical_species,
                 "n_candidates_tested": int(len(values)),
                 "n_candidates_MIC_lt_10": count,
                 "percentage_candidates_MIC_lt_10": (
@@ -266,17 +296,15 @@ def main() -> None:
     )
 
     summary = {
-        "schema_version": "1.1",
+        "schema_version": "1.2",
         "created_utc": datetime.now(timezone.utc).isoformat(),
         "experiment": "AMP-JEPA-Hybrid V4C",
         "stage": "species_specific_one_digit_predicted_MIC_panel",
         "input_file": str(input_path),
-        "species_regex": args.species_regex,
+        "species_query": query,
+        "canonical_species": canonical_species,
         "species_label": label,
         "matched_model_columns": species_columns,
-        "canonical_species_labels": sorted(
-            {infer_species_label(column) for column in species_columns}
-        ),
         "excluded_numeric_nonmodel_columns": excluded_numeric,
         "n_portfolio_candidates": int(len(df)),
         "n_matched_models": int(len(species_columns)),
